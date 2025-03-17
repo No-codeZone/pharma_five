@@ -1,0 +1,202 @@
+import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
+import 'package:pharma_five/ui/registration_screen.dart';
+
+import 'login_screen.dart';
+
+class WalkthroughScreen extends StatefulWidget {
+  const WalkthroughScreen({Key? key}) : super(key: key);
+
+  @override
+  _WalkthroughScreenState createState() => _WalkthroughScreenState();
+}
+
+class _WalkthroughScreenState extends State<WalkthroughScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Center(
+                    child: Image.asset(
+                      'assets/images/pharmafive_512x512.png',
+                      width: 100,
+                      height: 100,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.medical_services_outlined,
+                        color: Colors.blue.shade700,
+                        size: 30,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const SizedBox(height: 4),
+                        Text(
+                          'Join us today for easy',
+                          style: TextStyle(fontSize: 18, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'medicine management!',
+                          style: TextStyle(fontSize: 18, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 60),
+              Container(
+                width: double.infinity,
+                height: 300,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 280,
+                      height: 280,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    Positioned(
+                      child: Lottie.asset(
+                        'assets/animations/sunny_rainy_weather.json', // Update with your Lottie animation path
+                        width: 220,
+                        height: 220,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200, // Light gray background
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2), // Slight shadow color
+                              spreadRadius: 3,
+                              blurRadius: 6,
+                              offset: Offset(0, 3), // Positioned slightly downward
+                            ),
+                          ],
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) => RegistrationScreen()),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0E8388),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                            elevation: 0, // No built-in elevation since we're using custom shadow
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(50),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10.0),
+                                  child: Image.asset(
+                                    'assets/images/_signup_btn_icon_img.png',
+                                    width: 24,
+                                    height: 24,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 30),
+                              const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Color(0xffffffff), // Pure white background
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) => LoginScreen()),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey.shade50, // Almost white button color
+                            foregroundColor: Colors.grey.shade600,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                            elevation: 0, // Flat design, no shadow
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white, // Keeping icon container white
+                                  borderRadius: BorderRadius.circular(50),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10.0),
+                                  child: Image.asset(
+                                    'assets/images/_login_btn_icon_img.png',
+                                    width: 24,
+                                    height: 24,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 30),
+                              Text(
+                                'Login',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
