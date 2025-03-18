@@ -1,219 +1,344 @@
 import 'package:flutter/material.dart';
 import 'package:pharma_five/ui/registration_screen.dart';
-import '../helper/color_manager.dart';
+
+import '../service/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({Key? key}) : super(key: key);
+
   @override
   _LoginScreenState createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _emailOrPhoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
-  void _submitForm() {
+  void _validateForm() async {
     if (_formKey.currentState!.validate()) {
-      print("Login Successful");
+      bool success = await ApiService().loginUser(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Login successful!')),
+        );
+        // Navigate to Home or Dashboard
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invalid email or password!')),
+        );
+      }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.asset(
-            'assets/images/pharma_five_bg.jpg',
-            fit: BoxFit.cover,
-          ),
-          SingleChildScrollView(
-            child: Column(
-              children: [
-                Container(
-                  height: 250,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.7),
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(30),
-                      bottomRight: Radius.circular(30),
-                    ),
-                  ),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Back Button and Logo
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Image.asset('assets/images/pharma_five_logo.png', height: 50),
-                        SizedBox(height: 10),
-                        Text(
-                          "Welcome",
-                          style: TextStyle(
-                            color: ColorManager.textPrimary,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
+                        InkWell(
+                          onTap: () => Navigator.of(context).pop(),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0E8388),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFF5AB1B4),
+                                width: 2,
+                              ),
+                            ),
+                            child: const Center(
+                              child: Icon(Icons.arrow_back_ios_new,
+                                  color: Colors.white, size: 18),
+                            ),
                           ),
                         ),
-                        Text(
-                          "Sign in to continue",
-                          style: TextStyle(color: Colors.black54, fontSize: 14),
+                        Image.asset(
+                          'assets/images/pharmafive_512x512.png',
+                          width: 80,
+                          height: 80,
+                          errorBuilder: (context, error, stackTrace) => Icon(
+                            Icons.medical_services_outlined,
+                            color: Colors.blue.shade700,
+                            size: 30,
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-                SizedBox(height: 30),
-
-                // Login Form
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 30),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        // Email or Phone Number Field
-                        _buildEmailOrPhoneField("Email or Phone Number", _emailOrPhoneController),
-                        SizedBox(height: 20),
-
-                        // Password Field
-                        _buildPasswordField("Password", _passwordController, _obscurePassword, () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        }),
-                        SizedBox(height: 30),
-
-                        // Login Button
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: ColorManager.btnPrimary,
-                            minimumSize: Size(double.infinity, 50),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onPressed: _submitForm,
-                          child: Text("Login", style: TextStyle(color: Colors.white)),
-                        ),
-                        SizedBox(height: 20),
-
-                        // Sign-up and Forgot Password
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            TextButton(
-                              onPressed: () {
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => RegistrationScreen()),
-                                );
-                              },
-                              child: Text("Sign up", style: TextStyle(color: ColorManager.textPrimary)),
+                            const SizedBox(height: 16),
+
+                            // Title
+                            SizedBox(
+                              width: double.infinity,
+                              child: const Text(
+                                'Login to Pharma Five Imports',
+                                style: TextStyle(
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                                textAlign: TextAlign.start,
+                              ),
                             ),
+
+                            const SizedBox(height: 16),
+
+                            // Subtitle
+                            const Text(
+                              'Join us today for easy medicine',
+                              style: TextStyle(
+                                  fontSize: 14, color: Colors.black54),
+                              textAlign: TextAlign.center,
+                            ),
+                            const Text(
+                              'management!',
+                              style: TextStyle(
+                                  fontSize: 14, color: Colors.black54),
+                              textAlign: TextAlign.center,
+                            ),
+
+                            const SizedBox(height: 30),
+
+                            // Email Field
+                            buildTextField(
+                                "Email or username", _emailController),
+
+                            // Password Field
+                            buildPasswordField(),
+
+                            const SizedBox(height: 24),
+
+                            // Log in Button
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton(
+                                onPressed: _validateForm,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0E8388),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(30)),
+                                ),
+                                child: const Text('Log in',
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600)),
+                              ),
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            // OR separator
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                    child:
+                                        Divider(color: Colors.grey.shade300)),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12),
+                                  child: Text('or',
+                                      style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 14)),
+                                ),
+                                Expanded(
+                                    child:
+                                        Divider(color: Colors.grey.shade300)),
+                              ],
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            // Sign Up Button
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            RegistrationScreen()),
+                                  );
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.black,
+                                  side: BorderSide(color: Color(0xFF0E8388)),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(30)),
+                                ),
+                                child: const Text('Sign Up',
+                                    style: TextStyle(
+                                        color: Color(0xFF0E8388),
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600)),
+                              ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Terms and Privacy Policy
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 8.0),
+                                child: RichText(
+                                  textAlign: TextAlign.start,
+                                  text: TextSpan(
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey.shade600),
+                                    children: [
+                                      const TextSpan(
+                                          text:
+                                              'By signing in, you agree to the '),
+                                      TextSpan(
+                                        text: 'Terms and Privacy Policy',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            // Forgot Password
                             TextButton(
                               onPressed: () {
-                                // Forgot password action
+                                // Navigate to forgot password screen
                               },
-                              child: Text("Forgot Password", style: TextStyle(color: ColorManager.textPrimary)),
+                              child: const Text(
+                                'I forgot my password',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xffa020f0)),
+                              ),
                             ),
                           ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  // Email or Phone Number Field with Validation
-  Widget _buildEmailOrPhoneField(String label, TextEditingController controller) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: TextInputType.text,
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: ColorManager.textPrimary),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: ColorManager.textPrimary),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: ColorManager.textPrimary, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.red),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.red, width: 2),
-        ),
-      ),
-      style: TextStyle(color: ColorManager.textPrimary),
-      validator: (value) {
-        if (value == null || value.trim().isEmpty) {
-          return '$label is required';
-        }
-        bool isEmail = RegExp(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").hasMatch(value);
-        bool isPhone = RegExp(r"^\+91[0-9]{10}$").hasMatch(value);
-        if (!isEmail && !isPhone) {
-          return 'Enter a valid Email or +91XXXXXXXXXX format';
-        }
-        return null;
-      },
-    );
-  }
-
-  // Password Field with Validation
-  Widget _buildPasswordField(String label, TextEditingController controller,
-      bool obscureText, VoidCallback toggleVisibility) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscureText,
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: ColorManager.textPrimary),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: ColorManager.textPrimary),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: ColorManager.textPrimary, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.red),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.red, width: 2),
-        ),
-        suffixIcon: IconButton(
-          icon: Icon(
-            obscureText ? Icons.visibility_off : Icons.visibility,
-            color: ColorManager.textPrimary,
+  Widget buildTextField(String label, TextEditingController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: controller,
+          keyboardType: TextInputType.emailAddress,
+          decoration: InputDecoration(
+            labelText: label,
+            labelStyle: TextStyle(color: Colors.grey.shade600),
+            filled: true,
+            fillColor: Colors.grey.shade100,
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
+            ),
           ),
-          onPressed: toggleVisibility,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return "$label is required";
+            }
+            return null;
+          },
         ),
-      ),
-      style: TextStyle(color: ColorManager.textPrimary),
-      validator: (value) {
-        if (value == null || value.trim().isEmpty) {
-          return '$label is required';
-        }
-        if (value.length < 6) {
-          return 'Password must be at least 6 characters';
-        }
-        return null;
-      },
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget buildPasswordField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: _passwordController,
+          obscureText: _obscurePassword,
+          decoration: InputDecoration(
+            labelText: "Password",
+            labelStyle: TextStyle(color: Colors.grey.shade600),
+            filled: true,
+            fillColor: Colors.grey.shade100,
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
+            ),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: Colors.grey.shade600,
+              ),
+              onPressed: () {
+                setState(() {
+                  _obscurePassword = !_obscurePassword;
+                });
+              },
+            ),
+          ),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return "Password is required";
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+      ],
     );
   }
 }

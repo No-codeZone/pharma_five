@@ -61,19 +61,11 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    Container(
-                      width: 280,
-                      height: 280,
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
                     Positioned(
-                      child: Lottie.asset(
-                        'assets/animations/sunny_rainy_weather.json', // Update with your Lottie animation path
-                        width: 220,
-                        height: 220,
+                      child: Image.asset(
+                        'assets/animations/icons_logo_sign.gif', // Update with your GIF path
+                        width: 320,
+                        height: 320,
                         fit: BoxFit.cover,
                       ),
                     ),
