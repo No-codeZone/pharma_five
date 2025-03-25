@@ -7,7 +7,7 @@ class ApiService {
 
   // final String baseUrl = "http://localhost:8080/api/registration";
 
-  final String baseUrl = "http://192.168.211.98:8080/api/registration";
+  final String baseUrl = "http://192.168.xxx.xx:8080/api/registration";
 
   /// Register a new user
   Future<bool> registerUser({
