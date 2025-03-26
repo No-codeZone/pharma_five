@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:pharma_five/ui/splash_screen.dart';
 
-void main() {
-  runApp(const MyApp());
+import 'helper/shared_preferences.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SharedPreferenceHelper.init();
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {

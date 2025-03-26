@@ -1,13 +1,69 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/cupertino.dart';
+
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../helper/shared_preferences.dart';
+
 class ApiService {
+  // Base URL for API endpoints
+  final String baseUrl = "http://192.168.122.98:8080/api/registration";
 
-  // final String baseUrl = "http://localhost:8080/api/registration";
+  // Admin credentials - in a real app, these should be stored securely
+  // or managed through a proper backend system
+  final String adminEmail = "admin@pharmafive.com";
+  final String adminPassword = "Admin@220325";
+  final int defaultPageSize = 10;
 
-  final String baseUrl = "http://192.168.211.98:8080/api/registration";
+  /// Authenticate an admin user
+  Future<bool> adminLogin({
+    required String email,
+    required String password,
+  }) async {
+    if (email.trim() == adminEmail && password == adminPassword) {
+      await SharedPreferenceHelper.setLoggedIn(true);
+      await SharedPreferenceHelper.setUserEmail(email);
+      return true;
+    }
+    return false;
+  }
+
+  /// Authenticate a regular user through API
+  Future<bool> userLogin({
+    required String email,
+    required String password,
+  }) async {
+    final url = Uri.parse('$baseUrl/login');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "email": email,
+          "password": password,
+        }),
+      );
+
+      debugPrint("login/Response\t${response.body.toString()}");
+
+      if (response.statusCode == 200) {
+        await SharedPreferenceHelper.setLoggedIn(true);
+        await SharedPreferenceHelper.setUserEmail(email);
+        return true;
+      } else {
+        debugPrint('Login Error: ${response.body}');
+        return false;
+      }
+    } on TimeoutException catch (e) {
+      debugPrint('TimeoutException in login API: $e');
+      throw e;
+    } catch (e) {
+      debugPrint('Unexpected error in login API: $e');
+      return false;
+    }
+  }
 
   /// Register a new user
   Future<bool> registerUser({
@@ -20,8 +76,7 @@ class ApiService {
     final url = Uri.parse('$baseUrl/register');
 
     try {
-      final response = await http
-          .post(
+      final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -31,66 +86,123 @@ class ApiService {
           "organisationName": organisationName,
           "password": password,
         }),
-      )
-      // Note: Don't set timeout here - handle it in the calling function
-      // Let the timeout be managed by the calling function
-      // This allows us to properly show user-friendly messages
-          ;
+      );
 
       debugPrint("register/Response\t${response.body.toString()}");
 
       if (response.statusCode == 200) {
-        return true; // Success
+        return true;
       } else {
-        debugPrint('Error: ${response.body}');
+        debugPrint('Registration Error: ${response.body}');
         return false;
       }
     } on TimeoutException catch (e) {
-      debugPrint('TimeoutException in API: $e');
-      // Let the timeout propagate to the calling function
+      debugPrint('TimeoutException in registration API: $e');
       throw e;
     } catch (e) {
-      debugPrint('Unexpected error in API: $e');
+      debugPrint('Unexpected error in registration API: $e');
       return false;
     }
   }
 
-  /// Fetch users with pagination
-  Future<List<dynamic>> getUsers({int page = 0, int size = 5}) async {
-    final url = Uri.parse('$baseUrl/search?page=$page&size=$size');
+  /// Fetch users with pagination and status filtering
+  /*Future<Map<String, dynamic>> getUsers(
+      {int page = 0, int size = 10, String? status}) async {
+    final Map<String, String> queryParams = {
+      'page': page.toString(),
+      'size': size.toString(),
+    };
 
-    final response = await http.get(url);
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['content']; // Assuming the response is paginated
-    } else {
-      print('Error: ${response.body}');
-      return [];
+    // Map status to backend status values
+    switch (status) {
+      case 'Pending':
+        queryParams['status'] = 'PENDING';
+        break;
+      case 'Approved':
+        queryParams['status'] = 'ACTIVE';
+        break;
+      case 'Rejected':
+        queryParams['status'] = 'REJECTED';
+        break;
     }
-  }
 
-  /// Login User
-  Future<bool> loginUser({
-    required String email,
-    required String password,
+    // Construct URL with query parameters
+    final url =
+    Uri.parse('$baseUrl/search').replace(queryParameters: queryParams);
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        // Return the entire response to maintain pagination info
+        return json.decode(response.body);
+      } else {
+        debugPrint('Error fetching users: ${response.body}');
+        throw Exception('Failed to load users===${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error in getUsers: $e');
+      return {'content': [], 'totalPages': 0, 'last': true};
+    }
+  }*/
+
+  /// Fetch users with pagination and status filtering
+  Future<Map<String, dynamic>> getUsers({
+    int page = 0,
+    int size = 10,
+    String? search = '',
+    String? status,
   }) async {
-    final url = Uri.parse('$baseUrl/login');
+    final Map<String, String> queryParams = {
+      'page': page.toString(),
+      'size': size.toString(),
+      'search': search ?? '',
+    };
 
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        "email": email,
-        "password": password,
-      }),
-    );
+    // Map status to backend status values
+    if (status != null && status.isNotEmpty) {
+      switch (status.toLowerCase()) {
+        case 'pending':
+          queryParams['status'] = 'Pending';
+          break;
+        case 'approved':
+          queryParams['status'] = 'Active';
+          break;
+        case 'rejected':
+          queryParams['status'] = 'Reject';
+          break;
+      }
+    }
 
-    if (response.statusCode == 200) {
-      return true; // Login successful
-    } else {
-      print('Login Error: ${response.body}');
-      return false;
+    final url = Uri.parse('$baseUrl/search').replace(queryParameters: queryParams);
+
+    try {
+      final response = await http.get(url, headers: {'Content-Type': 'application/json'});
+
+      debugPrint("getUsers/Response\t${response.body.toString()}");
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        debugPrint('Error fetching users: ${response.body}');
+        throw Exception('Failed to load users: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error in getUsers: $e');
+      return {'content': [], 'totalPages': 0, 'last': true};
+    }
+  }
+
+
+  // Helper method to map backend status to frontend display status
+  String _mapStatusToFrontend(String backendStatus) {
+    switch (backendStatus) {
+      case 'PENDING':
+        return 'Pending';
+      case 'ACTIVE':
+        return 'Approved';
+      case 'REJECTED':
+        return 'Rejected';
+      default:
+        return 'Pending';
     }
   }
 }

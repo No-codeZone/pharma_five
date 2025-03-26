@@ -36,7 +36,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
       msg: message,
-      toastLength: Toast.LENGTH_SHORT,
+      toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.BOTTOM,
       timeInSecForIosWeb: 2,
       backgroundColor: isError ? Colors.red : const Color(0xFF0E8388),
@@ -278,7 +278,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   ),
 
                   const SizedBox(height: 24),
-
+                  
                   // Form Fields
                   buildTextField("Full Name", _nameController),
                   buildTextField("Organization", _organizationController),

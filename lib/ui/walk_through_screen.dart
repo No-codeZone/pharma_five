@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:pharma_five/ui/registration_screen.dart';
 
+import '../helper/shared_preferences.dart';
+import 'admin/admin_dashboard.dart';
+import 'doctor/user_dashboard.dart';
 import 'login_screen.dart';
 
 class WalkthroughScreen extends StatefulWidget {
@@ -12,6 +15,34 @@ class WalkthroughScreen extends StatefulWidget {
 }
 
 class _WalkthroughScreenState extends State<WalkthroughScreen> {
+
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginStatus();
+  }
+
+  Future<void> _checkLoginStatus() async {
+    await SharedPreferenceHelper.init();
+
+    bool isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
+    String? userType = await SharedPreferenceHelper.getUserType();
+
+    if (isLoggedIn && userType != null) {
+      Widget nextScreen =
+      userType == 'admin' ? const AdminDashboard() : const UserDashboard();
+
+      Future.microtask(() {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => nextScreen),
+        );
+      });
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
