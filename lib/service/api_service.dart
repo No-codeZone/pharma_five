@@ -8,7 +8,7 @@ import '../helper/shared_preferences.dart';
 
 class ApiService {
   // Base URL for API endpoints
-  final String baseUrl = "http://192.168.122.98:8080/api/registration";
+  final String baseUrl = "http://192.168.29.89:8080/api/registration";
 
   // Admin credentials - in a real app, these should be stored securely
   // or managed through a proper backend system
@@ -17,7 +17,7 @@ class ApiService {
   final int defaultPageSize = 10;
 
   /// Authenticate an admin user
-  Future<bool> adminLogin({
+  /*Future<bool> adminLogin({
     required String email,
     required String password,
   }) async {
@@ -27,10 +27,10 @@ class ApiService {
       return true;
     }
     return false;
-  }
+  }*/
 
   /// Authenticate a regular user through API
-  Future<bool> userLogin({
+  /*Future<bool> userLogin({
     required String email,
     required String password,
   }) async {
@@ -63,7 +63,67 @@ class ApiService {
       debugPrint('Unexpected error in login API: $e');
       return false;
     }
+  }*/
+
+  Future<Map<String, dynamic>?> userLogin({
+    required String email,
+    required String password,
+  }) async {
+    final url = Uri.parse('$baseUrl/login');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "email": email,
+          "password": password,
+        }),
+      );
+
+      debugPrint("login/Response\t${response.body}");
+
+      final Map<String, dynamic> data = jsonDecode(response.body);
+
+      final bool success = data['success'] ?? false;
+      final String message = data['message'] ?? "Login failed.";
+
+      if (response.statusCode == 200 && success) {
+        // Assuming role is inside data object: { data: { role: "admin" } }
+        final String role = (data['data']?['role'] ?? 'user').toLowerCase();
+
+        await SharedPreferenceHelper.setLoggedIn(true);
+        await SharedPreferenceHelper.setUserEmail(email);
+        await SharedPreferenceHelper.setUserType(role);
+
+        return {
+          'success': true,
+          'role': role,
+          'message': message,
+        };
+      } else {
+        debugPrint('Login Error: $message');
+        return {
+          'success': false,
+          'message': message,
+        };
+      }
+    } on TimeoutException catch (e) {
+      debugPrint('TimeoutException in login API: $e');
+      return {
+        "success": false,
+        "message": "Request timed out. Please try again.",
+      };
+    } catch (e) {
+      debugPrint('Unexpected error in login API: $e');
+      return {
+        "success": false,
+        "message": "An error occurred. Please try again.",
+      };
+    }
   }
+
+
 
   /// Register a new user
   Future<bool> registerUser({
@@ -145,7 +205,7 @@ class ApiService {
   }*/
 
   /// Fetch users with pagination and status filtering
-  Future<Map<String, dynamic>> getUsers({
+  /*Future<Map<String, dynamic>> getUsers({
     int page = 0,
     int size = 10,
     String? search = '',
@@ -155,6 +215,54 @@ class ApiService {
       'page': page.toString(),
       'size': size.toString(),
       'search': search ?? '',
+    };
+
+    // Map status to backend status values
+    if (status != null && status.isNotEmpty) {
+      switch (status.toLowerCase()) {
+        case 'pending':
+          queryParams['status'] = 'Pending';
+          break;
+        case 'approved':
+          queryParams['status'] = 'Active';
+          break;
+        case 'rejected':
+          queryParams['status'] = 'Reject';
+          break;
+      }
+    }
+
+    final url = Uri.parse('$baseUrl/search').replace(queryParameters: queryParams);
+
+    try {
+      final response = await http.get(url, headers: {'Content-Type': 'application/json'});
+
+      debugPrint("getUsers/Response\t${response.body.toString()}");
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        debugPrint('Error fetching users: ${response.body}');
+        throw Exception('Failed to load users: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error in getUsers: $e');
+      return {'content': [], 'totalPages': 0, 'last': true};
+    }
+  }*/
+
+  Future<Map<String, dynamic>> getUsers({
+    int page = 0,
+    int size = 10,
+    String? search = '',
+    String? status,
+    bool excludeAdmin = true, // New parameter
+  }) async {
+    final Map<String, String> queryParams = {
+      'page': page.toString(),
+      'size': size.toString(),
+      'search': search ?? '',
+      'excludeAdmin': excludeAdmin.toString(), // Add this parameter
     };
 
     // Map status to backend status values

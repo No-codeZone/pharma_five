@@ -6,7 +6,9 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:pharma_five/helper/color_manager.dart';
 import 'package:pharma_five/service/api_service.dart';
-
+import 'dart:io' show InternetAddress, SocketException;
+import 'package:lottie/lottie.dart';
+import 'package:pharma_five/ui/admin/admin_product_listing.dart';
 import '../../helper/shared_preferences.dart';
 import '../login_screen.dart';
 
@@ -29,6 +31,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
   List<dynamic> _usersList = [];
   late int _currentPage = 0;
   bool _hasMore = true;
+  bool _isConnected = true;
+  final TextEditingController _searchController = TextEditingController();
 
   // Mock data for each list type
   final Map<String, List<Map<String, dynamic>>> mockData = {
@@ -82,9 +86,38 @@ class _AdminDashboardState extends State<AdminDashboard> {
     selectedStatus = 'Pending';
     _checkLoginStatus();
     _fetchUsers();
+    _updateInternetStatus();
   }
 
-  Future<void> _fetchUsers() async {
+  Future<bool> _checkInternetConnectivity() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
+    }
+  }
+
+  void _updateInternetStatus() async {
+    _isConnected = await _checkInternetConnectivity();
+    setState(() {});  // Trigger UI update
+  }
+
+  ///including admin
+  /*Future<void> _fetchUsers() async {
+
+    // Check internet connectivity first
+    bool isConnected = await _checkInternetConnectivity();
+
+    if (!isConnected) {
+      setState(() {
+        _isLoading = false;
+        _hasMore = false;
+        _usersList = [];
+      });
+      return;
+    }
+
     if (_isLoading) return;
 
     setState(() {
@@ -96,6 +129,62 @@ class _AdminDashboardState extends State<AdminDashboard> {
         page: _currentPage,
         size: 10,
         status: selectedStatus,
+      );
+
+      setState(() {
+        // Extract the content from the response
+        _usersList = (response['content'] ?? []).map((user) {
+          // Additional mapping if needed
+          return {
+            ...user,
+            'status': _mapStatusToFrontend(user['status'] ?? 'PENDING')
+          };
+        }).toList();
+
+        _isLoading = false;
+
+        // Update pagination information
+        _hasMore = !(response['last'] ?? true);
+        totalPages = response['totalPages'] ?? 1;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _hasMore = false;
+        _usersList = [];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load users: $e')),
+      );
+    }
+  }*/
+
+  ///excluding admin
+  Future<void> _fetchUsers() async {
+    // Check internet connectivity first
+    bool isConnected = await _checkInternetConnectivity();
+
+    if (!isConnected) {
+      setState(() {
+        _isLoading = false;
+        _hasMore = false;
+        _usersList = [];
+      });
+      return;
+    }
+
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final response = await _apiService.getUsers(
+        page: _currentPage,
+        size: 10,
+        status: selectedStatus,
+        excludeAdmin: true, // Add this parameter to exclude admin users
       );
 
       setState(() {
@@ -361,7 +450,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       case 0:
         return _buildUsersContent();
       case 1:
-        return _buildMedicinesContent();
+        return AdminProductListing();
       case 2:
         return _buildReportsContent();
       default:
@@ -824,13 +913,72 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: _buildStatusDropdown())
+
+          else if(_selectedItemPosition==1)
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search Products',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => _searchController.clear(),
+                  )
+                      : null,
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
   Widget buildUserList() {
-    if (_isLoading && _usersList.isEmpty) {
+    // Show no internet connection screen first
+    if (!_isConnected) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Lottie.asset(
+              "assets/animations/internet.json",
+              width: 250,
+              height: 250,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No Internet Connection',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () {
+                _updateInternetStatus(); // Retry checking internet status
+                _fetchUsers(); // Retry fetching users if internet is back
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show loading indicator if data is being fetched
+    if (_isLoading) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -843,15 +991,32 @@ class _AdminDashboardState extends State<AdminDashboard> {
       );
     }
 
+    // Show no data animation only when the internet is available and list is empty
     if (_usersList.isEmpty) {
       return Center(
-        child: Text(
-          'No ${selectedStatus.toLowerCase()} users found',
-          style: const TextStyle(fontSize: 16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Lottie.asset(
+              "assets/animations/no_data_found.json",
+              width: 250,
+              height: 250,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No ${selectedStatus.toLowerCase()} users found',
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
+            ),
+          ],
         ),
       );
     }
 
+    // Show user list when data is available
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: _usersList.length,
@@ -881,7 +1046,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 width: 30,
                 child: Text(
                   '$serialNumber.',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  style: const TextStyle(fontSize: 13),
                 ),
               ),
 
@@ -890,7 +1055,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 flex: 2,
                 child: Text(
                   item['name'] ?? 'Unknown',
-                  style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
                 ),
               ),
 
@@ -932,7 +1097,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final screenWidth = MediaQuery.of(context).size.width;
     final bool isCompact = screenWidth < 400;
 
-    const double iconSize = 16;
+    const double iconSize = 10;
     const double circlePadding = 6;
     const double spacing = 10;
 

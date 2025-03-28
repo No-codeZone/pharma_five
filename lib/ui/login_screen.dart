@@ -57,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
 
-  void _validateForm() async {
+  /*void _validateForm() async {
     try {
       await SharedPreferenceHelper.init();
 
@@ -107,6 +107,42 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       _showToast("Login failed. Please try again.", isError: true);
       print('Login error: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }*/
+
+  void _validateForm() async {
+    try {
+      await SharedPreferenceHelper.init();
+
+      if (_formKey.currentState!.validate()) {
+        setState(() => _isLoading = true);
+
+        final result = await ApiService().userLogin(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+
+        if (result != null && result['success'] == true) {
+          final role = result['role'] ?? 'User';
+          _showToast("${role[0].toUpperCase()}${role.substring(1)} Login successful!");
+
+          Widget nextScreen = role == 'admin' ? const AdminDashboard() : const UserDashboard();
+
+          debugPrint("Navigating to ${role == 'admin' ? 'AdminDashboard' : 'UserDashboard'}");
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => nextScreen),
+          );
+        } else {
+          _showToast(result?['message'] ?? "Login failed. Please try again.", isError: true);
+        }
+      }
+    } catch (e) {
+      _showToast("Login failed. Please try again.", isError: true);
+      debugPrint('Login error: $e');
     } finally {
       setState(() => _isLoading = false);
     }
