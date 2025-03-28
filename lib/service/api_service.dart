@@ -8,7 +8,7 @@ import '../helper/shared_preferences.dart';
 
 class ApiService {
   // Base URL for API endpoints
-  final String baseUrl = "http://192.168.29.89:8080/api/registration";
+  final String baseUrl = "http://192.168.xx.xx:8080/api/registration";
 
   // Admin credentials - in a real app, these should be stored securely
   // or managed through a proper backend system
