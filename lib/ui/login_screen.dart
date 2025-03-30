@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:pharma_five/ui/admin/admin_dashboard.dart';
 import 'package:pharma_five/ui/registration_screen.dart';
+import 'package:pharma_five/ui/walk_through_screen.dart';
 import '../helper/color_manager.dart';
 import '../helper/shared_preferences.dart';
 import '../service/api_service.dart';
@@ -32,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
       fontSize: 16.0,
     );
   }
+
   @override
   void initState() {
     super.initState();
@@ -45,7 +47,9 @@ class _LoginScreenState extends State<LoginScreen> {
     String? userType = await SharedPreferenceHelper.getUserType();
 
     if (isLoggedIn && userType != null) {
-      Widget nextScreen = userType == 'admin' ? const AdminDashboard() : const UserDashboard();
+      Widget nextScreen = userType == 'admin'
+          ? const AdminDashboard()
+          : UserDashboardScreen();
 
       Future.microtask(() {
         Navigator.pushReplacement(
@@ -126,18 +130,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (result != null && result['success'] == true) {
           final role = result['role'] ?? 'User';
-          _showToast("${role[0].toUpperCase()}${role.substring(1)} Login successful!");
+          _showToast(
+              "${role[0].toUpperCase()}${role.substring(1)} Login successful!");
 
-          Widget nextScreen = role == 'admin' ? const AdminDashboard() : const UserDashboard();
+          Widget nextScreen = role == 'admin'
+              ? const AdminDashboard()
+              : UserDashboardScreen();
 
-          debugPrint("Navigating to ${role == 'admin' ? 'AdminDashboard' : 'UserDashboard'}");
+          debugPrint("Navigating to ${role == 'admin'
+              ? 'AdminDashboard'
+              : 'UserDashboard'}");
 
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => nextScreen),
           );
         } else {
-          _showToast(result?['message'] ?? "Login failed. Please try again.", isError: true);
+          _showToast(result?['message'] ?? "Login failed. Please try again.",
+              isError: true);
         }
       }
     } catch (e) {
@@ -167,7 +177,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         InkWell(
-                          onTap: () => Navigator.of(context).pop(),
+                          onTap: () => {
+                          Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (context) => WalkthroughScreen()),
+                          )
+                        },
                           borderRadius: BorderRadius.circular(20),
                           child: Container(
                             width: 40,
@@ -225,6 +240,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
+                        /*onPressed: (){
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (context) => AdminDashboard()),
+                          );
+                        },*/
                         onPressed: _isLoading ? null : _validateForm,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF0E8388),
@@ -356,7 +377,9 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           validator: (value) {
-            if (value == null || value.trim().isEmpty) {
+            if (value == null || value
+                .trim()
+                .isEmpty) {
               return "$label is required";
             }
             return null;

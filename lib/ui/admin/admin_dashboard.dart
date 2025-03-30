@@ -33,53 +33,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
   bool _hasMore = true;
   bool _isConnected = true;
   final TextEditingController _searchController = TextEditingController();
-
-  // Mock data for each list type
-  final Map<String, List<Map<String, dynamic>>> mockData = {
-    'Pending': List.generate(
-        10,
-        (index) => {
-              'id': index + 1,
-              'name': 'John',
-              'organization': 'Organization',
-              'status': 'Pending'
-            }),
-    'Approved': List.generate(
-        10,
-        (index) => {
-              'id': index + 1,
-              'name': 'John',
-              'organization': 'Organization',
-              'status': 'Approved'
-            }),
-    'Rejected': List.generate(
-        10,
-        (index) => {
-              'id': index + 1,
-              'name': 'John',
-              'organization': 'Organization',
-              'status': 'Rejected'
-            }),
-  };
-
-  // Mock data for medicines
-  /*final List<Map<String, dynamic>> medicineData = List.generate(
-      10,
-      (index) => {
-            'id': index + 1,
-            'name': 'Medicine ${index + 1}',
-            'category': 'Category ${(index % 3) + 1}',
-            'price': (index + 1) * 10.0
-          });*/
-
-  // Mock data for products
+  late int _currentProductPage = 0;
+  bool _hasMoreProduct = true;
+  List<Map<String, String>> _filteredProductList = [];
   final List<Map<String, String>> _productList = List.generate(
-      10,
-          (index) => {
-        'medicineName': 'Medicine name${index + 1}',
-        'genericName': 'Generic Name ${index + 1}'
-      }
+    10,
+        (index) => {
+      "medicineName": "Medicine name ${index + 1}",
+      "genericName": "Generic Name ${index + 1}",
+    },
   );
+
+
   @override
   void initState() {
     super.initState();
@@ -87,7 +52,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
     _checkLoginStatus();
     _fetchUsers();
     _updateInternetStatus();
+    /*_filteredProductList = List.from(_productList);
+
+    _searchController.addListener(() {
+      _filterProducts(_searchController.text);
+    });*/
+
+    // Initialize the product list and filtered list
+    _filteredProductList = List.from(_productList);
+
+    // Set up the search controller listener
+    _searchController.addListener(_onSearchChanged);
+
+    // Debug statement to confirm product list initialization
+    debugPrint('Initial product list length: ${_productList.length}');
+    debugPrint('Initial filtered product list length: ${_filteredProductList.length}');
+    /*setState(() {
+      filteredProducts = List.from(allProducts);
+      _searchController.addListener(_onSearchChanged);
+    });*/
   }
+
 
   Future<bool> _checkInternetConnectivity() async {
     try {
@@ -380,7 +365,41 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   Border.all(color: const Color(0xff262A88)),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: _buildStatusDropdown())
+                            child: _buildStatusDropdown()),
+                      if (_selectedItemPosition == 1)
+                        Container(
+                          margin: const EdgeInsets.only(left: 16, right: 20),
+                          width: screenWidth * 0.6,
+                          height: 40,
+                          child: TextField(
+                            controller: _searchController,
+                            decoration:
+                            InputDecoration(
+                              hintText: 'Search Products',
+                              // prefixIcon: const Icon(Icons.search),
+                              suffixIcon: _searchController.text.isNotEmpty
+                                  ? IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _filterProducts('');
+                                },
+                              )
+                                  : null,
+                              filled: true,
+                              fillColor: Color(0xffece9e9),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.blue[800]!, width: 1.5),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.blue[800]!, width: 2.0),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -450,12 +469,136 @@ class _AdminDashboardState extends State<AdminDashboard> {
       case 0:
         return _buildUsersContent();
       case 1:
-        return AdminProductListing();
+        // return AdminProductListing();
+        return _adminProductListing();
       case 2:
         return _buildReportsContent();
       default:
         return _buildUsersContent();
     }
+  }
+
+  Widget _adminProductListing(){
+    debugPrint('Rendering product listing... Found ${_filteredProductList.length} products');
+
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 8, horizontal: 16),
+                  child: const Text("Products Lists",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+                const Spacer(),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[800],
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.horizontal(
+                            right: Radius.circular(15),
+                            left: Radius.circular(15))),
+                    padding: const EdgeInsets.all(12),
+                  ),
+                  onPressed: () {
+                    debugPrint("Add product..!");
+                    _showAddProductDialog();
+                  },
+                  child: const Icon(Icons.add, color: Colors.white,),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _buildTableHeader(),
+            const SizedBox(height: 4),
+            Expanded(
+              child: _filteredProductList.isEmpty
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Lottie.asset("assets/animations/no_data_found.json", width: 200),
+                    const SizedBox(height: 10),
+                    const Text("No products found.", style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 20),
+                    // Add a refresh button to reinitialize the product list
+                    /*ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          // Reinitialize the product list
+                          _filteredProductList = List.from(_productList);
+                          debugPrint('Refreshed product list: ${_filteredProductList.length} items');
+                        });
+                      },
+                      child: const Text("Refresh Products"),
+                    ),*/
+                  ],
+                ),
+              )
+                  : ListView.builder(
+                itemCount: _filteredProductList.length,
+                itemBuilder: (context, index) =>
+                    _buildTableRow(index, _filteredProductList[index]),
+              ),
+            ),
+            buildProductPagination()
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildProductPagination() {
+    // Only show pagination if we actually have products
+    if (_filteredProductList.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Calculate total pages based on product list size
+    final int totalProducts = _productList.length;
+    final int productsPerPage = 10;
+    final int calculatedTotalPages = (totalProducts / productsPerPage).ceil();
+    final int totalPages = _hasMoreProduct ? calculatedTotalPages : _currentProductPage + 1;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: List.generate(totalPages > 0 ? totalPages : 1, (index) {
+          final pageNumber = index + 1;
+          final isSelected = index == _currentProductPage;
+
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                _currentProductPage = index;
+                // Implement pagination logic here if needed
+                // For now, just keep the full list available
+              });
+            },
+            child: Container(
+              width: 40,
+              height: 40,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              alignment: Alignment.center,
+              child: Text(
+                '$pageNumber',
+                style: TextStyle(
+                    color: const Color(0xff262A88),
+                    fontWeight:
+                    isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: isSelected ? 18 : 14),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
   }
 
   Widget _buildUsersContent() {
@@ -483,96 +626,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         buildPagination(),
       ],
     );
-  }
-
-  Widget _buildMedicinesContent() {
-    return Scaffold(
-        body: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              alignment: Alignment.center,
-              child: const Text(
-                'Products Lists',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-
-            // Product List
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                itemCount: _productList.length,
-                itemBuilder: (context, index) {
-                  final product = _productList[index];
-                  return Card(
-                    elevation: 3,
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      child: Row(
-                        children: [
-                          // Serial Number Column
-                          SizedBox(
-                            width: 40,
-                            child: Text(
-                              '${index + 1}',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-
-                          // Medicine Name Column
-                          Expanded(
-                            flex: 3,
-                            child: Text(
-                              product['medicineName'] ?? 'Unknown',
-                              style: const TextStyle(fontWeight: FontWeight.w500),
-                            ),
-                          ),
-
-                          // Generic Name Column
-                          Expanded(
-                            flex: 3,
-                            child: Text(
-                              product['genericName'] ?? 'N/A',
-                              style: TextStyle(
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ),
-
-                          // Edit Button
-                          IconButton(
-                            icon: const Icon(Icons.edit, color: Color(0xff262A88)),
-                            onPressed: () {
-                              // TODO: Implement edit functionality
-                              _showEditProductDialog(product);
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () {
-            // TODO: Implement add new product functionality
-            _showAddProductDialog();
-          },
-          backgroundColor: const Color(0xff262A88),
-          child: const Icon(Icons.add),
-        ),
-      );
   }
 
   void _showEditProductDialog(Map<String, String> product) {
@@ -620,6 +673,93 @@ class _AdminDashboardState extends State<AdminDashboard> {
         );
       },
     );
+  }
+
+  Widget _buildTableHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.blue[800],
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: const [
+          Expanded(
+              flex: 1,
+              child: Center(
+                  child: Text('No.',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)))),
+          Expanded(
+              flex: 3,
+              child: Center(
+                  child: Text('Medicine name',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)))),
+          Expanded(
+              flex: 3,
+              child: Center(
+                  child: Text('Generic Name',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)))),
+          Expanded(
+              flex: 1,
+              child: Center(
+                  child: Text('Edit',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableRow(int index, Map<String, String> product) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(flex: 1, child: Text('${index + 1}.')),
+            Expanded(flex: 3, child: Text(product["medicineName"]!)),
+            Expanded(flex: 3, child: Text(product["genericName"]!)),
+            Expanded(
+              flex: 1,
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.edit, color: Colors.grey.shade800, size: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onSearchChanged() {
+    String query = _searchController.text.toLowerCase();
+    debugPrint('Searching: "$query"');
+
+    setState(() {
+      if (query.isEmpty) {
+        // If no search query, show all products
+        _filteredProductList = List.from(_productList);
+      } else {
+        // Filter products based on search query
+        _filteredProductList = _productList
+            .where((product) =>
+        product["medicineName"]!.toLowerCase().contains(query) ||
+            product["genericName"]!.toLowerCase().contains(query))
+            .toList();
+      }
+
+      debugPrint('Filtered count: ${_filteredProductList.length}');
+    });
   }
 
   void _showAddProductDialog() {
@@ -795,150 +935,71 @@ class _AdminDashboardState extends State<AdminDashboard> {
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          backgroundColor: Colors.white,
-          title: Column(
-            children: const [
-              Icon(Icons.logout, size: 48, color: Color(0xff262A88)),
-              SizedBox(height: 12),
-              Text(
-                'Logout Confirmation',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-              ),
-            ],
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            side: BorderSide(color: Colors.grey.shade300),
           ),
           content: const Text(
             'Are you sure you want to logout?',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 16, color: Colors.black87),
           ),
-          actionsAlignment: MainAxisAlignment.spaceEvenly,
-          actionsPadding:
-              const EdgeInsets.only(bottom: 16, left: 16, right: 16),
           actions: [
-            SizedBox(
-              width: 120,
-              height: 44,
-              child: OutlinedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xff262A88)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                SizedBox(
+                  height: 30,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(10)),
+                      ),
+                      side: const BorderSide(color: Color(0xff262A88)),
+                      elevation: 0,
+                    ),
+                    child: const Text('Cancel'),
                   ),
                 ),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(
-                      color: Color(0xff262A88), fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 120,
-              height: 44,
-              child: ElevatedButton(
-                onPressed: () async {
-                  try {
-                    await SharedPreferenceHelper.clearSession();
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const LoginScreen()),
-                      (route) => false,
-                    );
-                  } catch (e) {
-                    print('Logout failed: $e');
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Logout failed. Please try again.')),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff262A88),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                const Expanded(child: SizedBox(width: 80)),
+                SizedBox(
+                  height: 30,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      try {
+                        await SharedPreferenceHelper.clearSession();
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (context) => const LoginScreen()),
+                              (route) => false,
+                        );
+                      } catch (e) {
+                        print('Logout failed: $e');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Logout failed. Please try again.')),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(10)),
+                      ),
+                    ),
+                    child: const Text('Logout'),
                   ),
                 ),
-                child: const Text(
-                  'Yes, Logout',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
+              ],
             ),
           ],
         );
       },
-    );
-  }
-
-  Widget buildHeader() {
-    // Only show the dropdown in the users screen
-    return Container(
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        children: [
-          // Logo
-          Container(
-            padding: const EdgeInsets.all(8),
-            child: Image.asset(
-              'assets/images/pharmafive_512x512.png',
-              width: 80,
-              height: 80,
-              errorBuilder: (context, error, stackTrace) {
-                return const Icon(
-                  Icons.language,
-                  size: 40,
-                  color: Colors.blue,
-                );
-              },
-            ),
-          ),
-          const Spacer(),
-          // Only show dropdown in users tab
-          if (_selectedItemPosition == 0)
-            Container(
-                height: 30,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: const Color(0xff262A88),
-                  ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: _buildStatusDropdown())
-
-          else if(_selectedItemPosition==1)
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search Products',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => _searchController.clear(),
-                  )
-                      : null,
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
     );
   }
 
@@ -1195,6 +1256,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
+  void _filterProducts(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredProductList = List.from(_productList);
+      } else {
+        _filteredProductList = _productList.where((product) {
+          final medicineName = product['medicineName']!.toLowerCase();
+          final genericName = product['genericName']!.toLowerCase();
+          return medicineName.contains(query.toLowerCase()) ||
+              genericName.contains(query.toLowerCase());
+        }).toList();
+      }
+    });
+  }
 
 // Helper method to normalize status
   String _normalizeStatus(dynamic status) {
@@ -1473,5 +1548,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
         }),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 }

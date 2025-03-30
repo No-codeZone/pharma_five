@@ -8,13 +8,18 @@ import '../helper/shared_preferences.dart';
 
 class ApiService {
   // Base URL for API endpoints
-  final String baseUrl = "http://192.168.29.89:8080/api/registration";
+  final String baseUrl = "http://ec2-16-171-4-239.eu-north-1.compute.amazonaws.com:8080/api/registration";
+  // final String baseUrl = "http://192.168.237.98:8080/api/registration";
 
   // Admin credentials - in a real app, these should be stored securely
   // or managed through a proper backend system
   final String adminEmail = "admin@pharmafive.com";
   final String adminPassword = "Admin@220325";
   final int defaultPageSize = 10;
+  final String loginAPI="/login";
+  final String registerAPI="/register";
+  final String userUpdateAPI="/login";
+  final String searchUserListingAPI="/search";
 
   /// Authenticate an admin user
   /*Future<bool> adminLogin({
@@ -69,7 +74,7 @@ class ApiService {
     required String email,
     required String password,
   }) async {
-    final url = Uri.parse('$baseUrl/login');
+    final url = Uri.parse('$baseUrl${loginAPI}');
 
     try {
       final response = await http.post(
@@ -126,14 +131,14 @@ class ApiService {
 
 
   /// Register a new user
-  Future<bool> registerUser({
+  Future<Map<String, dynamic>> registerUser({
     required String name,
     required String mobileNumber,
     required String email,
     required String organisationName,
     required String password,
   }) async {
-    final url = Uri.parse('$baseUrl/register');
+    final url = Uri.parse('$baseUrl${registerAPI}');
 
     try {
       final response = await http.post(
@@ -148,20 +153,21 @@ class ApiService {
         }),
       );
 
-      debugPrint("register/Response\t${response.body.toString()}");
+      debugPrint("register/Response: ${response.body}");
+
+      final Map<String, dynamic> responseData = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
-        return true;
+        return {"success": true, "message": responseData['message'] ?? 'Registration successful'};
       } else {
-        debugPrint('Registration Error: ${response.body}');
-        return false;
+        return {"success": false, "message": responseData['message'] ?? 'Registration failed'};
       }
     } on TimeoutException catch (e) {
       debugPrint('TimeoutException in registration API: $e');
-      throw e;
+      throw TimeoutException('Request timed out');
     } catch (e) {
       debugPrint('Unexpected error in registration API: $e');
-      return false;
+      return {"success": false, "message": "Unexpected error occurred"};
     }
   }
 
@@ -280,7 +286,7 @@ class ApiService {
       }
     }
 
-    final url = Uri.parse('$baseUrl/search').replace(queryParameters: queryParams);
+    final url = Uri.parse('$baseUrl${searchUserListingAPI}').replace(queryParameters: queryParams);
 
     try {
       final response = await http.get(url, headers: {'Content-Type': 'application/json'});

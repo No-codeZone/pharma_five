@@ -1,10 +1,9 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:pharma_five/ui/login_screen.dart';
 import 'package:pharma_five/ui/walk_through_screen.dart';
-import 'package:fluttertoast/fluttertoast.dart'; // Add this import
 import '../service/api_service.dart';
 
 class RegistrationScreen extends StatefulWidget {
@@ -32,21 +31,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   bool _isEmailValid = true;
   bool _isPasswordValid = true;
 
-  // Function to show toast message
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
       msg: message,
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.BOTTOM,
       timeInSecForIosWeb: 2,
-      backgroundColor: isError ? Colors.red : const Color(0xFF0E8388),
+      backgroundColor: isError ? Colors.red : const Color(0xff262A88),
       textColor: Colors.white,
       fontSize: 16.0,
     );
   }
 
   void _validateForm() async {
-    // Reset all validation states
     setState(() {
       _validationMessage = null;
       _isLoading = false;
@@ -59,158 +56,99 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     bool hasError = false;
 
-    // Check name field
     if (_nameController.text.trim().isEmpty) {
-      setState(() {
-        _isNameValid = false;
-        hasError = true;
-      });
+      _isNameValid = false;
+      hasError = true;
     }
 
-    // Check organization field
     if (_organizationController.text.trim().isEmpty) {
-      setState(() {
-        _isOrganizationValid = false;
-        hasError = true;
-      });
+      _isOrganizationValid = false;
+      hasError = true;
     }
 
-    // Check mobile field
     if (_mobileController.text.trim().isEmpty || _mobileController.text.length != 10) {
-      setState(() {
-        _isMobileValid = false;
-        hasError = true;
-        if (_mobileController.text.trim().isEmpty) {
-          _validationMessage = "Please enter mobile number";
-        } else {
-          _validationMessage = "Mobile number must be 10 digits";
-        }
-      });
+      _isMobileValid = false;
+      hasError = true;
+      _validationMessage = _mobileController.text.trim().isEmpty
+          ? "Please enter mobile number"
+          : "Mobile number must be 10 digits";
     }
 
-    // Check email field
     if (_emailController.text.trim().isEmpty ||
-        !RegExp(r'^[a-zA-Z0-9.*%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(_emailController.text)) {
-      setState(() {
-        _isEmailValid = false;
-        hasError = true;
-        if (_emailController.text.trim().isEmpty) {
-          _validationMessage = "Please enter email address";
-        } else {
-          _validationMessage = "Please enter a valid email address";
-        }
-      });
+        !RegExp(r'^[a-zA-Z0-9.*%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+            .hasMatch(_emailController.text)) {
+      _isEmailValid = false;
+      hasError = true;
+      _validationMessage = _emailController.text.trim().isEmpty
+          ? "Please enter email address"
+          : "Please enter a valid email address";
     }
 
-    // Check password field
     if (_passwordController.text.trim().isEmpty || _passwordController.text.length < 8) {
-      setState(() {
-        _isPasswordValid = false;
-        hasError = true;
-        if (_passwordController.text.trim().isEmpty) {
-          _validationMessage = "Please enter password";
-        } else {
-          _validationMessage = "Password must include at least 8 characters";
-        }
-      });
+      _isPasswordValid = false;
+      hasError = true;
+      _validationMessage = _passwordController.text.trim().isEmpty
+          ? "Please enter password"
+          : "Password must include at least 8 characters";
     }
 
-    // If any field has an error, return early
     if (hasError) {
-      if (_validationMessage == null) {
-        _validationMessage = "Please fill in all fields!";
-      }
+      setState(() {});
       return;
     }
 
-    // If we reach here, all validations passed
     try {
-      // Show loading indicator
-      setState(() {
-        _isLoading = true;
-      });
+      setState(() => _isLoading = true);
 
-      // Comment out or replace connectivity check
-      // var connectivityResult = await Connectivity().checkConnectivity();
-      bool hasInternet = true; // Assume connectivity for testing
+      final response = await ApiService()
+          .registerUser(
+        name: _nameController.text.trim(),
+        mobileNumber: _mobileController.text.trim(),
+        email: _emailController.text.trim(),
+        organisationName: _organizationController.text.trim(),
+        password: _passwordController.text.trim(),
+      )
+          .timeout(
+        const Duration(seconds: 60),
+        onTimeout: () => throw TimeoutException("Request timed out"),
+      );
 
       if (!mounted) return;
+      setState(() => _isLoading = false);
 
-      if (!hasInternet) {
-        setState(() {
-          _isLoading = false;
-          _validationMessage = "No internet connection. Please check your network.";
-        });
-        return;
-      }
-
-      // Use a timeout for the API call
-      bool success = false;
-      try {
-        success = await ApiService().registerUser(
-          name: _nameController.text.trim(),
-          mobileNumber: _mobileController.text.trim(),
-          email: _emailController.text.trim(),
-          organisationName: _organizationController.text.trim(),
-          password: _passwordController.text.trim(),
-        ).timeout(
-          const Duration(seconds: 15),
-          onTimeout: () {
-            // This will be caught by the outer try-catch
-            throw TimeoutException("Request timed out!");
-          },
+      if (response['success']) {
+        // _showToast(response['message'] ?? 'Registration successful!');
+        Fluttertoast.showToast(
+          msg: response['message'] ?? 'Registration successful!',
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.BOTTOM,
+          timeInSecForIosWeb: 2,
+          backgroundColor: Color(0xff262A88),
+          textColor: Colors.white,
+          fontSize: 16.0,
         );
-      } on TimeoutException {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _validationMessage = "Request timed out! Please try again.";
-          });
-          _showToast("Request timed out! Please try again.", isError: true);
-        }
-        return;
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        _isLoading = false;
-      });
-
-      if (success) {
-        _showToast("Registration successful!");
-
-        // Small delay to ensure toast is visible before navigation
-        Future.delayed(Duration(milliseconds: 500), () {
+        Future.delayed(const Duration(milliseconds: 500), () {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => LoginScreen()),
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
           );
         });
       } else {
-        setState(() {
-          _validationMessage = "Registration failed. Try again!";
-        });
-        _showToast("Registration failed. Try again!", isError: true);
+        setState(() => _validationMessage = response['message']);
+        _showToast(response['message'], isError: true);
       }
-    } catch (e) {
-      debugPrint("Error in validateForm: $e");
-
+    } on TimeoutException {
       setState(() {
         _isLoading = false;
+        _validationMessage = "Request timed out! Please try again.";
       });
-
-      if (e is TimeoutException) {
-        setState(() {
-          _validationMessage = "Request timed out! Please try again.";
-        });
-        _showToast("Request timed out! Please try again.", isError: true);
-      } else {
-        setState(() {
-          _validationMessage = "An unexpected error occurred.";
-        });
-        _showToast("An unexpected error occurred.", isError: true);
-      }
+      _showToast("Request timed out! Please try again.", isError: true);
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _validationMessage = "An unexpected error occurred.";
+      });
+      _showToast("An unexpected error occurred.", isError: true);
     }
   }
 
@@ -227,15 +165,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Back Button and Logo
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       InkWell(
                         onTap: () => Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(
-                              builder: (context) => WalkthroughScreen()),
+                          MaterialPageRoute(builder: (_) => const WalkthroughScreen()),
                         ),
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
@@ -244,14 +180,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xFF0E8388),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: const Color(0xFF5AB1B4),
-                              width: 4,
-                            ),
+                            border: Border.all(color: const Color(0xFF5AB1B4), width: 4),
                           ),
                           child: const Center(
-                            child: Icon(Icons.arrow_back_ios_new,
-                                color: Colors.white, size: 18),
+                            child: Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
                           ),
                         ),
                       ),
@@ -259,44 +191,33 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                         'assets/images/pharmafive_512x512.png',
                         width: 80,
                         height: 80,
-                        errorBuilder: (context, error, stackTrace) => Icon(
-                          Icons.medical_services_outlined,
-                          color: Colors.blue.shade700,
-                          size: 30,
-                        ),
+                        errorBuilder: (_, __, ___) => Icon(Icons.medical_services_outlined,
+                            color: Colors.blue.shade700, size: 30),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  // Headline
                   Text(
                     'Join us today for easy\nmedicine management!',
-                    style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
                   ),
-
                   const SizedBox(height: 24),
-                  
-                  // Form Fields
-                  buildTextField("Full Name", _nameController),
-                  buildTextField("Organization", _organizationController),
+
+                  buildTextField("Full Name", _nameController, isValid: _isNameValid),
+                  buildTextField("Organization", _organizationController, isValid: _isOrganizationValid),
                   buildMobileNumberField(),
-                  buildTextField("Email", _emailController, isEmail: true),
+                  buildTextField("Email", _emailController, isEmail: true, isValid: _isEmailValid),
                   buildPasswordField(),
 
-                  // const SizedBox(height: 5),
-
-                  // Validation Message
-                  if (_validationMessage != null)
+                  if (_validationMessage != null &&
+                      (!_isNameValid || !_isOrganizationValid || !_isMobileValid || !_isEmailValid || !_isPasswordValid))
                     Container(
-                      padding: EdgeInsets.all(8),
-                      margin: EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.only(bottom: 12),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline, color: Colors.red, size: 16),
-                          SizedBox(width: 8),
+                          const Icon(Icons.error_outline, color: Colors.red, size: 16),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _validationMessage!,
@@ -307,7 +228,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       ),
                     ),
 
-                  // Sign Up Button with Loader
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -316,12 +236,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0E8388),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                         disabledBackgroundColor: Colors.grey.shade300,
                       ),
                       child: _isLoading
-                          ? SizedBox(
+                          ? const SizedBox(
                         height: 24,
                         width: 24,
                         child: CircularProgressIndicator(
@@ -329,32 +248,24 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0E8388)),
                         ),
                       )
-                          : const Text('Sign Up',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600)),
+                          : const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                     ),
                   ),
 
                   const SizedBox(height: 12),
 
-                  // OR separator
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Expanded(child: Divider(color: Colors.grey.shade300)),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('or',
-                            style: TextStyle(
-                                color: Colors.grey.shade600, fontSize: 14)),
+                        child: Text('or', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
                       ),
-                      // Expanded(child: Divider(color: Colors.grey.shade300)),
                     ],
                   ),
 
                   const SizedBox(height: 12),
 
-                  // Login Button
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -364,41 +275,30 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           : () {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(
-                              builder: (context) => LoginScreen()),
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
                         );
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey.shade700,
-                        side: BorderSide(color: Color(0xFF0E8388)),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30)),
+                        side: const BorderSide(color: Color(0xFF0E8388)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                       ),
                       child: const Text('Login',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF0E8388))),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0E8388))),
                     ),
                   ),
-
                   const SizedBox(height: 16),
 
-                  // Terms and Privacy Policy
                   Center(
                     child: RichText(
                       textAlign: TextAlign.center,
                       text: TextSpan(
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade600),
-                        children: [
-                          const TextSpan(
-                              text: 'By signing in, you agree to the '),
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        children: const [
+                          TextSpan(text: 'By signing in, you agree to the '),
                           TextSpan(
                             text: 'Terms and Privacy Policy',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
                           ),
                         ],
                       ),
@@ -420,26 +320,24 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       children: [
         TextFormField(
           controller: controller,
-          keyboardType:
-          isEmail ? TextInputType.emailAddress : TextInputType.text,
+          keyboardType: isEmail ? TextInputType.emailAddress : TextInputType.text,
           decoration: InputDecoration(
             labelText: label,
             labelStyle: TextStyle(color: Colors.grey.shade600),
             filled: true,
             fillColor: Colors.grey.shade100,
-            contentPadding:
-            const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: isValid ? BorderSide.none : BorderSide(color: const Color(0xFF0E8388), width: 2),
+              borderSide: isValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: isValid ? BorderSide.none : BorderSide(color: const Color(0xFF0E8388), width: 2),
+              borderSide: isValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: const Color(0xFF0E8388), width: 2),
+              borderSide: const BorderSide(color: Color(0xFF0E8388), width: 2),
             ),
           ),
         ),
@@ -456,27 +354,24 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           controller: _mobileController,
           keyboardType: TextInputType.number,
           maxLength: 10,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-          ],
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           decoration: InputDecoration(
             labelText: "Mobile Number",
             labelStyle: TextStyle(color: Colors.grey.shade600),
             filled: true,
             fillColor: Colors.grey.shade100,
-            contentPadding:
-            const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isMobileValid ? BorderSide.none : BorderSide(color: const Color(0xFF0E8388), width: 2),
+              borderSide: _isMobileValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isMobileValid ? BorderSide.none : BorderSide(color: const Color(0xFF0E8388), width: 2),
+              borderSide: _isMobileValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: const Color(0xFF0E8388), width: 2),
+              borderSide: const BorderSide(color: Color(0xFF0E8388), width: 2),
             ),
             counterText: "",
           ),
@@ -498,32 +393,25 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             labelStyle: TextStyle(color: Colors.grey.shade600),
             filled: true,
             fillColor: Colors.grey.shade100,
-            contentPadding:
-            const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isPasswordValid ? BorderSide.none : BorderSide(color: const Color(0xFF0E8388), width: 2),
+              borderSide: _isPasswordValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isPasswordValid ? BorderSide.none : BorderSide(color: const Color(0xFF0E8388), width: 2),
+              borderSide: _isPasswordValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: const Color(0xFF0E8388), width: 2),
+              borderSide: const BorderSide(color: Color(0xFF0E8388), width: 2),
             ),
             suffixIcon: IconButton(
               icon: Icon(
-                _obscurePassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
+                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                 color: Colors.grey.shade600,
               ),
-              onPressed: () {
-                setState(() {
-                  _obscurePassword = !_obscurePassword;
-                });
-              },
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
         ),

@@ -31,7 +31,7 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
 
     if (isLoggedIn && userType != null) {
       Widget nextScreen =
-      userType == 'admin' ? const AdminDashboard() : const UserDashboard();
+      userType == 'admin' ? const AdminDashboard() :  UserDashboardScreen();
 
       Future.microtask(() {
         Navigator.pushReplacement(
