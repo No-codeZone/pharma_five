@@ -74,11 +74,11 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                         const SizedBox(height: 4),
                         Text(
                           'Join us today for easy',
-                          style: TextStyle(fontSize: 18, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                          style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
                         ),
                         Text(
                           'medicine management!',
-                          style: TextStyle(fontSize: 18, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                          style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),

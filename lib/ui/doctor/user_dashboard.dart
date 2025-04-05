@@ -3,6 +3,7 @@ import 'package:lottie/lottie.dart';
 import 'package:pharma_five/ui/login_screen.dart';
 import '../../helper/shared_preferences.dart';
 import '../../service/api_service.dart';
+import '../../model/product_listing_response_model.dart'; // Import the model
 import '../admin_approval_screen.dart';
 
 class UserDashboardScreen extends StatefulWidget {
@@ -21,10 +22,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
   final int _itemsPerPage = 10;
   bool _hasMore = true;
   bool _isLoading = true;
+  bool _isProductsLoading = false; // Flag for product loading
   bool isUserActive = false;
   bool _isRefreshing = false;
   String _userStatus = 'pending'; // Store the actual status string
   String _lastRefreshed = ''; // Track when status was last checked
+  String _errorMessage = ''; // Store error messages from API calls
 
   @override
   void initState() {
@@ -120,21 +123,46 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
     }
   }
 
-  void _loadProductData() {
-    // Simulate loading product data
-    _allProducts = List.generate(50, (index) {
-      return {
-        'medicineName': 'Medicine name ${index + 1}',
-        'genericName': 'Generic Name ${index + 1}'
-      };
-    });
-
-    _filteredProducts = List.from(_allProducts);
-    _updateHasMore();
-
+  Future<void> _loadProductData() async {
     setState(() {
-      _isLoading = false;
+      _isProductsLoading = true;
+      _errorMessage = '';
     });
+
+    try {
+      // Call the product listing API
+      final products = await ApiService().fetchProductList();
+
+      // Convert API response to the format used by the UI
+      _allProducts = products.map((product) => {
+        'medicineName': product.medicineName ?? 'Unknown Medicine',
+        'genericName': product.genericName ?? 'Unknown Generic Name',
+        // Add any other fields you want to display
+      }).toList();
+
+      _filteredProducts = List.from(_allProducts);
+      _updateHasMore();
+
+      setState(() {
+        _isProductsLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading product data: $e');
+      setState(() {
+        _isProductsLoading = false;
+        _errorMessage = 'Failed to load products. Please try again later.';
+        _allProducts = [];
+        _filteredProducts = [];
+      });
+
+      // Show error snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_errorMessage),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _navigateToApprovalScreen() {
@@ -206,6 +234,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
   }
 
   List<Map<String, String>> _getCurrentPageItems() {
+    if (_filteredProducts.isEmpty) {
+      return [];
+    }
+
     int start = _currentPage * _itemsPerPage;
     int end = (_currentPage + 1) * _itemsPerPage;
     end = end > _filteredProducts.length ? _filteredProducts.length : end;
@@ -214,6 +246,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
 
   Widget _buildPagination() {
     int totalPages = (_filteredProducts.length / _itemsPerPage).ceil();
+
+    if (totalPages <= 0) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -453,38 +489,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
         strokeWidth: 3,
         child: Column(
           children: [
-            // Status indicator in product listing view
-            /*Container(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
-              margin: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 6),
-                  const Text(
-                    "Account Status: Approved",
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Spacer(),
-                  *//*Text(
-                    "Pull down to refresh status",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),*//*
-                ],
-              ),
-            ),*/
-
             // Search
             Padding(
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -493,7 +497,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
                 onChanged: _searchProducts,
                 decoration: InputDecoration(
                   hintText: 'Search Products',
-                  prefixIcon: const Icon(Icons.search),
+                  // prefixIcon: const Icon(Icons.search),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
                     icon: const Icon(Icons.clear),
@@ -538,12 +542,89 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
 
             const SizedBox(height: 8),
 
-            // Product List
-            Expanded(
+            // Product List or Loading State
+            _isProductsLoading
+                ? const Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Color(0xff0e63ff)),
+                    SizedBox(height: 16),
+                    Text(
+                      "Loading products...",
+                      style: TextStyle(
+                        color: Color(0xff262A88),
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+                : _errorMessage.isNotEmpty
+                ? Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _errorMessage,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 16,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: _loadProductData,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xff0e63ff),
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text("Try Again"),
+                    ),
+                  ],
+                ),
+              ),
+            )
+                : _filteredProducts.isEmpty
+                ? Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Lottie.asset(
+                        "assets/animations/no_data_found.json",
+                        width: 200),
+                    const SizedBox(height: 10),
+                    Text(
+                      _searchController.text.isEmpty
+                          ? "No products available"
+                          : "No products match your search",
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+                : Expanded(
               child: _buildProductListView(horizontalPadding),
             ),
 
-            _buildPagination(),
+            // Only show pagination if there are products and no errors
+            if (!_isProductsLoading && _errorMessage.isEmpty && _filteredProducts.isNotEmpty)
+              _buildPagination(),
           ],
         ),
       ),

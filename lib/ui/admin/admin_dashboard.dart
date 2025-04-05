@@ -6,15 +6,12 @@ import 'package:flutter_snake_navigationbar/flutter_snake_navigationbar.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:lottie/lottie.dart';
-import 'package:pharma_five/helper/color_manager.dart';
 import 'package:pharma_five/service/api_service.dart';
 
 import '../../helper/shared_preferences.dart';
 import '../../model/add_product_request_model.dart';
 import '../../model/product_listing_response_model.dart';
 import '../../model/product_update_request_model.dart';
-import '../../model/product_update_response_model.dart';
-
 import '../login_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -746,8 +743,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           // Parse serialNo as int
                           // Parse serialNo from string to int
                           int? serialNo;
-                          if (_selectedProductForEdit != null && _selectedProductForEdit?['serialNo'] != null) {
-                            serialNo = int.tryParse(_selectedProductForEdit!['serialNo'].toString());
+                          if (_selectedProductForEdit != null &&
+                              _selectedProductForEdit?['serialNo'] != null) {
+                            serialNo = int.tryParse(
+                                _selectedProductForEdit!['serialNo']
+                                    .toString());
                           }
 
                           // Create request model
@@ -760,13 +760,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           );
 
                           // Call API service
-                          final response = await _apiService.updateProduct(requestModel);
+                          final response =
+                              await _apiService.updateProduct(requestModel);
 
                           if (response != null) {
                             // Success - update local data
                             setState(() {
                               // Find the product in the list and update it
-                              final index = products.indexWhere((p) => p.serialNo == response.serialNo);
+                              final index = products.indexWhere(
+                                  (p) => p.serialNo == response.serialNo);
                               if (index != -1) {
                                 // Create a new ProductListingResponseModel from response
                                 products[index] = ProductListingResponseModel(
@@ -780,9 +782,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                 );
 
                                 // Also update filtered products if needed
-                                final filteredIndex = filteredProducts.indexWhere((p) => p.serialNo == response.serialNo);
+                                final filteredIndex =
+                                    filteredProducts.indexWhere(
+                                        (p) => p.serialNo == response.serialNo);
                                 if (filteredIndex != -1) {
-                                  filteredProducts[filteredIndex] = products[index]; // Use the same updated object
+                                  filteredProducts[filteredIndex] = products[
+                                      index]; // Use the same updated object
                                 }
                               }
 
@@ -794,13 +799,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             // Refresh product list to ensure data is up to date
                             loadProducts();
 
-                            _showToast("Product updated successfully", isError: false);
+                            _showToast("Product updated successfully",
+                                isError: false);
                           } else {
                             // Handle error
                             setState(() {
                               _isUpdating = false;
                             });
-                            _showToast("Failed to update product", isError: true);
+                            _showToast("Failed to update product",
+                                isError: true);
                           }
                         } catch (e) {
                           // Handle exception
@@ -1195,7 +1202,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
         child: Row(
           children: [
             Expanded(
-                flex: 1, child: Text('${(_currentProductPage * 10) + index + 1}.')),
+                flex: 1,
+                child: Text('${(_currentProductPage * 10) + index + 1}.')),
             Expanded(flex: 3, child: Text(product.medicineName ?? '')),
             Expanded(flex: 3, child: Text(product.genericName ?? '')),
             Expanded(
@@ -1303,7 +1311,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       // Logout logic
                       _showLogoutDialog();
                     },
-                    icon: const Icon(Icons.power_settings_new),
+                    icon: const Icon(Icons.power_settings_new,color: Colors.white,size: 24,),
                     label: const Text('Logout'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xff262A88),
@@ -1936,11 +1944,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
           value: value,
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: const BoxDecoration(
+            width: 100,
+            decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: Color(0xFFB0BEC5), // light grey border like the image
-                  width: 1,
+                  color: Color(0xff0e63ff), // light grey border like the image
+                  width: 0.5,
                 ),
               ),
             ),

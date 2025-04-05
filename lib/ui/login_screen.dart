@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:pharma_five/ui/admin/admin_dashboard.dart';
+import 'package:pharma_five/ui/forgot_password_screen.dart';
 import 'package:pharma_five/ui/registration_screen.dart';
 import 'package:pharma_five/ui/walk_through_screen.dart';
 import '../helper/color_manager.dart';
@@ -414,7 +415,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+                        );
+                      },
                       child: Text(
                         'I forgot my password',
                         style: TextStyle(

@@ -221,7 +221,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   const SizedBox(height: 16),
                   Text(
                     'Join us today for easy\nmedicine management!',
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 14, color: Colors.black54,),
                   ),
                   const SizedBox(height: 24),
 

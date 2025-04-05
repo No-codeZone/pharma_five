@@ -197,7 +197,7 @@ class ApiService {
         headers: {'Content-Type': 'application/json'},
       );
 
-      debugPrint('Logout API response: ${response.statusCode} - ${response.body}');
+      debugPrint('Logout API response: Logout ${response.statusCode} - ${response.body}');
     } catch (e) {
       debugPrint('Logout API failed: $e');
     }
@@ -291,6 +291,51 @@ class ApiService {
     }
   }
 
+  ///Send OTP
+  Future<Map<String, dynamic>?> sendOTP({
+    required String email,
+  }) async {
+    final url = Uri.parse('$baseUrl$sendOTPAPI');
+
+    try {
+      debugPrint("Sending OTP request to $url with body: ${jsonEncode({
+        "email": email,
+      })}");
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "email": email,
+        }),
+      );
+
+      debugPrint("sendOTP/Response: ${response.body}");
+
+      final Map<String, dynamic> data = jsonDecode(response.body);
+      final bool success = data['success'] ?? false;
+      final String message = data['message'] ?? "OTP send failed.";
+
+      if (response.statusCode == 200 && success) {
+        return {
+          'success': true,
+          'message': message,
+        };
+      } else {
+        // Always return server message
+        return {
+          'success': false,
+          'message': message,
+        };
+      }
+    } catch (e) {
+      debugPrint('Unexpected error in sendOTP API: $e');
+      return {
+        "success": false,
+        "message": "An error occurred. Please try again.",
+      };
+    }
+  }
 
   // Helper method to map backend status to frontend display status
   String _mapStatusToFrontend(String backendStatus) {
