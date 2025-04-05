@@ -91,7 +91,7 @@ class _AdminDashboardHeaderState extends State<AdminDashboardHeader> {
         page: _currentPage,
         size: 10,
         status: selectedStatus,
-        excludeAdmin: true, // Add this parameter to exclude admin users
+        // excludeAdmin: true, // Add this parameter to exclude admin users
       );
 
       setState(() {

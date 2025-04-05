@@ -135,7 +135,7 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                             );
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0E8388),
+                            backgroundColor: const Color(0xff0e63ff),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
                             elevation: 0, // No built-in elevation since we're using custom shadow

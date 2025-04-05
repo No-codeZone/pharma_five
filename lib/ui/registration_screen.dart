@@ -5,6 +5,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:pharma_five/ui/login_screen.dart';
 import 'package:pharma_five/ui/walk_through_screen.dart';
 import '../service/api_service.dart';
+import '../service/internet_connectivity_service.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({Key? key}) : super(key: key);
@@ -31,7 +32,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   bool _isEmailValid = true;
   bool _isPasswordValid = true;
 
-  void _showToast(String message, {bool isError = false}) {
+  Timer? _redirectTimer;
+
+  void _showToast(String message, bool isError) {
     Fluttertoast.showToast(
       msg: message,
       toastLength: Toast.LENGTH_LONG,
@@ -74,7 +77,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           : "Mobile number must be 10 digits";
     }
 
-    if (_emailController.text.trim().isEmpty ||
+    /*if (_emailController.text.trim().isEmpty ||
         !RegExp(r'^[a-zA-Z0-9.*%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
             .hasMatch(_emailController.text)) {
       _isEmailValid = false;
@@ -82,7 +85,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       _validationMessage = _emailController.text.trim().isEmpty
           ? "Please enter email address"
           : "Please enter a valid email address";
-    }
+    }*/
 
     if (_passwordController.text.trim().isEmpty || _passwordController.text.length < 8) {
       _isPasswordValid = false;
@@ -94,6 +97,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     if (hasError) {
       setState(() {});
+      return;
+    }
+
+    // Check internet connectivity
+    final isConnected = await InternetConnectivityService().checkInternetConnectivity();
+    if (!isConnected) {
+      _showToast("No internet connection. Please check your connection and try again.", true);
       return;
     }
 
@@ -117,38 +127,42 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       setState(() => _isLoading = false);
 
       if (response['success']) {
-        // _showToast(response['message'] ?? 'Registration successful!');
-        Fluttertoast.showToast(
-          msg: response['message'] ?? 'Registration successful!',
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM,
-          timeInSecForIosWeb: 2,
-          backgroundColor: Color(0xff262A88),
-          textColor: Colors.white,
-          fontSize: 16.0,
-        );
-        Future.delayed(const Duration(milliseconds: 500), () {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
-          );
+        _showToast(response['message'], false); // false: not an error
+
+        // Clear all controllers inside setState so that the UI updates
+        setState(() {
+          _nameController.clear();
+          _organizationController.clear();
+          _mobileController.clear();
+          _emailController.clear();
+          _passwordController.clear();
+        });
+
+        // Delay navigation for a short time to let the user see the success message
+        _redirectTimer = Timer(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+            );
+          }
         });
       } else {
         setState(() => _validationMessage = response['message']);
-        _showToast(response['message'], isError: true);
+        _showToast(response['message'], false);
       }
     } on TimeoutException {
       setState(() {
         _isLoading = false;
         _validationMessage = "Request timed out! Please try again.";
       });
-      _showToast("Request timed out! Please try again.", isError: true);
+      _showToast("Request timed out! Please try again.", true);
     } catch (e) {
       setState(() {
         _isLoading = false;
         _validationMessage = "An unexpected error occurred.";
       });
-      _showToast("An unexpected error occurred.", isError: true);
+      _showToast("An unexpected error occurred.", true);
     }
   }
 
@@ -178,9 +192,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0E8388),
+                            color: const Color(0xff0e63ff),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFF5AB1B4), width: 4),
+                            border: Border.all(color: const Color(0xFF9ABEE3), width: 4),
                           ),
                           child: const Center(
                             child: Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
@@ -195,6 +209,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                             color: Colors.blue.shade700, size: 30),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Signup to Pharma Five Imports',
+                    style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black),
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -234,7 +256,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _validateForm,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0E8388),
+                        backgroundColor: const Color(0xff0e63ff),
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                         disabledBackgroundColor: Colors.grey.shade300,
@@ -245,7 +267,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                         width: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0E8388)),
+                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xff0e63ff)),
                         ),
                       )
                           : const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
@@ -263,9 +285,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 12),
-
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -280,11 +300,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey.shade700,
-                        side: const BorderSide(color: Color(0xFF0E8388)),
+                        side: const BorderSide(color: Color(0xff0e63ff)),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                       ),
                       child: const Text('Login',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0E8388))),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xff0e63ff))),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -329,15 +349,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: isValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
+              borderSide: isValid ? BorderSide.none : const BorderSide(color: Color(0xff0e63ff), width: 2),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: isValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
+              borderSide: isValid ? BorderSide.none : const BorderSide(color: Color(0xff0e63ff), width: 2),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Color(0xFF0E8388), width: 2),
+              borderSide: const BorderSide(color: Color(0xff0e63ff), width: 2),
             ),
           ),
         ),
@@ -363,15 +383,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isMobileValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
+              borderSide: _isMobileValid ? BorderSide.none : const BorderSide(color: Color(0xff0e63ff), width: 2),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isMobileValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
+              borderSide: _isMobileValid ? BorderSide.none : const BorderSide(color: Color(0xff0e63ff), width: 2),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Color(0xFF0E8388), width: 2),
+              borderSide: const BorderSide(color: Color(0xff0e63ff), width: 2),
             ),
             counterText: "",
           ),
@@ -396,15 +416,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isPasswordValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
+              borderSide: _isPasswordValid ? BorderSide.none : const BorderSide(color: Color(0xff0e63ff), width: 2),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isPasswordValid ? BorderSide.none : const BorderSide(color: Color(0xFF0E8388), width: 2),
+              borderSide: _isPasswordValid ? BorderSide.none : const BorderSide(color: Color(0xff0e63ff), width: 2),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Color(0xFF0E8388), width: 2),
+              borderSide: const BorderSide(color: Color(0xff0e63ff), width: 2),
             ),
             suffixIcon: IconButton(
               icon: Icon(
@@ -418,5 +438,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         const SizedBox(height: 12),
       ],
     );
+  }
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _organizationController.dispose();
+    _mobileController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 }

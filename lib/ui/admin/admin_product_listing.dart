@@ -57,7 +57,7 @@ class _AdminProductListingState extends State<AdminProductListing> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.blue[800],
+        color: Color(0xff0e63ff),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -144,7 +144,7 @@ class _AdminProductListingState extends State<AdminProductListing> {
                     const Spacer(),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[800],
+                        backgroundColor: Color(0xff0e63ff),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.horizontal(
                                 right: Radius.circular(15),

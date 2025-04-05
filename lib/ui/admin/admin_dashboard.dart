@@ -1,15 +1,20 @@
 import 'dart:convert';
+import 'dart:io' show InternetAddress, SocketException;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_snake_navigationbar/flutter_snake_navigationbar.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
+import 'package:lottie/lottie.dart';
 import 'package:pharma_five/helper/color_manager.dart';
 import 'package:pharma_five/service/api_service.dart';
-import 'dart:io' show InternetAddress, SocketException;
-import 'package:lottie/lottie.dart';
-import 'package:pharma_five/ui/admin/admin_product_listing.dart';
+
 import '../../helper/shared_preferences.dart';
+import '../../model/add_product_request_model.dart';
+import '../../model/product_listing_response_model.dart';
+import '../../model/product_update_request_model.dart';
+import '../../model/product_update_response_model.dart';
+
 import '../login_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -38,12 +43,48 @@ class _AdminDashboardState extends State<AdminDashboard> {
   List<Map<String, String>> _filteredProductList = [];
   final List<Map<String, String>> _productList = List.generate(
     10,
-        (index) => {
+    (index) => {
       "medicineName": "Medicine name ${index + 1}",
       "genericName": "Generic Name ${index + 1}",
     },
   );
+  bool _isEditingProduct = false;
+  bool _isUpdating = false;
 
+  final TextEditingController _medicineNameEditController =
+      TextEditingController();
+  final TextEditingController _genericNameEditController =
+      TextEditingController();
+  final TextEditingController _manufacturerEditController =
+      TextEditingController();
+  final TextEditingController _indicationsEditController =
+      TextEditingController();
+  final TextEditingController _medicineNameAddController =
+      TextEditingController();
+  final TextEditingController _genericNameAddController =
+      TextEditingController();
+  final TextEditingController _manufacturerAddController =
+      TextEditingController();
+  final TextEditingController _indicationsAddController =
+      TextEditingController();
+  bool _isAddingProduct = false;
+
+  /*late List<dynamic> products = [];
+  late bool isProductLoading = false;*/
+
+  // Product listing states
+  bool isProductLoading = false;
+  bool isEditingProduct = false;
+  bool isAddingProduct = false;
+
+// Product data
+  List<ProductListingResponseModel> products = [];
+  List<ProductListingResponseModel> filteredProducts = [];
+
+  // final paginated = getPaginatedProducts();
+
+// Selected product for editing (as Map for compatibility with existing code)
+  Map<String, String>? _selectedProductForEdit;
 
   @override
   void initState() {
@@ -52,27 +93,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
     _checkLoginStatus();
     _fetchUsers();
     _updateInternetStatus();
-    /*_filteredProductList = List.from(_productList);
-
-    _searchController.addListener(() {
-      _filterProducts(_searchController.text);
-    });*/
-
-    // Initialize the product list and filtered list
     _filteredProductList = List.from(_productList);
-
     // Set up the search controller listener
-    _searchController.addListener(_onSearchChanged);
-
+    _searchController.addListener(onSearchChanged);
     // Debug statement to confirm product list initialization
-    debugPrint('Initial product list length: ${_productList.length}');
-    debugPrint('Initial filtered product list length: ${_filteredProductList.length}');
-    /*setState(() {
-      filteredProducts = List.from(allProducts);
-      _searchController.addListener(_onSearchChanged);
-    });*/
+    loadProducts();
   }
-
 
   Future<bool> _checkInternetConnectivity() async {
     try {
@@ -85,64 +111,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   void _updateInternetStatus() async {
     _isConnected = await _checkInternetConnectivity();
-    setState(() {});  // Trigger UI update
+    setState(() {}); // Trigger UI update
   }
-
-  ///including admin
-  /*Future<void> _fetchUsers() async {
-
-    // Check internet connectivity first
-    bool isConnected = await _checkInternetConnectivity();
-
-    if (!isConnected) {
-      setState(() {
-        _isLoading = false;
-        _hasMore = false;
-        _usersList = [];
-      });
-      return;
-    }
-
-    if (_isLoading) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final response = await _apiService.getUsers(
-        page: _currentPage,
-        size: 10,
-        status: selectedStatus,
-      );
-
-      setState(() {
-        // Extract the content from the response
-        _usersList = (response['content'] ?? []).map((user) {
-          // Additional mapping if needed
-          return {
-            ...user,
-            'status': _mapStatusToFrontend(user['status'] ?? 'PENDING')
-          };
-        }).toList();
-
-        _isLoading = false;
-
-        // Update pagination information
-        _hasMore = !(response['last'] ?? true);
-        totalPages = response['totalPages'] ?? 1;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _hasMore = false;
-        _usersList = [];
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load users: $e')),
-      );
-    }
-  }*/
 
   ///excluding admin
   Future<void> _fetchUsers() async {
@@ -169,15 +139,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
         page: _currentPage,
         size: 10,
         status: selectedStatus,
-        excludeAdmin: true, // Add this parameter to exclude admin users
+        // excludeAdmin: true, // Add this parameter to exclude admin users
       );
 
       setState(() {
         // Extract the content from the response
         _usersList = (response['content'] ?? []).map((user) {
-          // Additional mapping if needed
           return {
             ...user,
+            'id': _safeIntConvert(user['id']),
             'status': _mapStatusToFrontend(user['status'] ?? 'PENDING')
           };
         }).toList();
@@ -200,7 +170,37 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
-// Helper method to map status
+  /// Fetch product listing
+  Future<void> loadProducts() async {
+    setState(() {
+      isProductLoading = true;
+    });
+
+    final result = await _apiService.fetchProductList();
+    debugPrint("Product listing API result\t${result.toString()}");
+
+    setState(() {
+      products = result;
+      filteredProducts = result;
+      isProductLoading = false; // Note: removed the underscore here
+    });
+  }
+
+  ///Load paginated products
+  List<ProductListingResponseModel> getPaginatedProducts() {
+    final startIndex = _currentProductPage * 10;
+
+    if (startIndex >= filteredProducts.length) {
+      return []; // Avoid RangeError
+    }
+
+    final endIndex = startIndex + 10;
+    return filteredProducts.sublist(
+      startIndex,
+      endIndex > filteredProducts.length ? filteredProducts.length : endIndex,
+    );
+  }
+
   String _mapStatusToFrontend(String backendStatus) {
     switch (backendStatus.toLowerCase()) {
       case 'pending':
@@ -220,26 +220,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.BOTTOM,
       timeInSecForIosWeb: 2,
-      backgroundColor: isError ? Colors.red : const Color(0xFF0E8388),
+      backgroundColor: isError ? Colors.red : const Color(0xff0e63ff),
       textColor: Colors.white,
       fontSize: 16.0,
     );
   }
 
-  Future<void> _updateStatus(int id, String newStatus) async {
-    final user = _usersList.firstWhere(
-          (u) => _safeIntConvert(u['id']) == id,
-      orElse: () => null,
-    );
-
-    if (user == null || user['email'] == null) {
-      debugPrint("User or email not found for ID: $id");
-      return;
-    }
-
-    final url = Uri.parse("${ApiService().baseUrl}/update-status");
+  Future<void> _updateStatusByEmail(String email, String newStatus) async {
+    final url = Uri.parse("${_apiService.baseUrl}/update-status");
     final requestBody = {
-      "email": user['email'],
+      "email": email,
       "status": newStatus, // "Active" or "Reject"
     };
 
@@ -251,17 +241,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
       );
 
       final responseData = jsonDecode(response.body);
+      debugPrint("Status updated successfully for\t${responseData.toString()}");
       if (response.statusCode == 200 && responseData['success'] == true) {
-        debugPrint("Status updated successfully for ${user['email']}");
-        _showToast("Status updated successfully for ${user['email']}", isError: false);
+        debugPrint("Status updated successfully for $email");
+        _showToast("Status updated successfully for $email", isError: false);
 
         // Immediately refresh the list
         setState(() {
-          _currentPage = 0; // Reset to first page
-          _usersList.clear(); // Clear existing data
+          _currentPage = 0;
+          _usersList.clear();
         });
-
-        // Fetch users with the current selected status
         await _fetchUsers();
       } else {
         debugPrint("Status update failed: ${response.body}");
@@ -275,28 +264,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
-  void _refreshUserList() async{
-    setState(() {
-      _currentPage = 0; // Reset to first page
-      _usersList.clear(); // Clear existing data
-      _isLoading = true;
-      _hasMore = true;
-    });
-    await _fetchUsers();
-    // Fetch updated user list (you need to implement this function)
-    // _fetchUsers().then((_) {
-      setState(() {
-        _isLoading = false;
-      });
-    // });
-  }
-
   Future<void> _checkLoginStatus() async {
     try {
       bool isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
       String? userType = await SharedPreferenceHelper.getUserType();
 
       if (!isLoggedIn || userType != 'admin') {
+        await SharedPreferenceHelper.clearSession(); // Auto clear broken state
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -331,94 +305,108 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         return Scaffold(
+          backgroundColor: Colors.white,
           body: SafeArea(
-            child: Column(
-              children: [
-                // Header with responsive layout
-                Padding(
-                  padding: EdgeInsets.symmetric(
-                      horizontal: horizontalPadding, vertical: 8),
-                  child: Row(
-                    children: [
-                      // Logo with responsive sizing
-                      Image.asset(
-                        'assets/images/pharmafive_512x512.png',
-                        width: logoSize,
-                        height: logoSize,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(
-                            Icons.language,
-                            size: logoSize * 0.6,
-                            color: Colors.blue,
-                          );
-                        },
-                      ),
-                      const Spacer(),
-
-                      // Dropdown only for users tab
-                      if (_selectedItemPosition == 0)
-                        Container(
-                            height: 40,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            decoration: BoxDecoration(
-                              border:
-                                  Border.all(color: const Color(0xff262A88)),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: _buildStatusDropdown()),
-                      if (_selectedItemPosition == 1)
-                        Container(
-                          margin: const EdgeInsets.only(left: 16, right: 20),
-                          width: screenWidth * 0.6,
-                          height: 40,
-                          child: TextField(
-                            controller: _searchController,
-                            decoration:
-                            InputDecoration(
-                              hintText: 'Search Products',
-                              // prefixIcon: const Icon(Icons.search),
-                              suffixIcon: _searchController.text.isNotEmpty
-                                  ? IconButton(
-                                icon: const Icon(Icons.close),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  _filterProducts('');
-                                },
-                              )
-                                  : null,
-                              filled: true,
-                              fillColor: Color(0xffece9e9),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.blue[800]!, width: 1.5),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.blue[800]!, width: 2.0),
-                              ),
-                            ),
+            child: Container(
+              decoration: BoxDecoration(color: Colors.white),
+              child: Column(
+                children: [
+                  if (!_isEditingProduct && !_isAddingProduct)
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: horizontalPadding, vertical: 8),
+                      child: Row(
+                        children: [
+                          // Logo
+                          Image.asset(
+                            'assets/images/pharmafive_512x512.png',
+                            width: logoSize,
+                            height: logoSize,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                Icons.language,
+                                size: logoSize * 0.6,
+                                color: Colors.blue,
+                              );
+                            },
                           ),
-                        ),
-                    ],
+                          const Spacer(),
+
+                          // Dropdown (Users tab)
+                          if (_selectedItemPosition == 0)
+                            Container(
+                                height: 40,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                      color: const Color(0xff0e63ff)),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: _buildStatusDropdown()),
+                          // Search bar (Product tab)
+                          if (_selectedItemPosition == 1)
+                            Container(
+                              margin:
+                                  const EdgeInsets.only(left: 16, right: 20),
+                              width: screenWidth * 0.6,
+                              height: 40,
+                              child: TextField(
+                                controller: _searchController,
+                                onChanged: (value) {
+                                  onSearchChanged(); // Call this explicitly on every change
+                                },
+                                decoration: InputDecoration(
+                                  hintText: 'Search Products',
+                                  suffixIcon: _searchController.text.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.close),
+                                          onPressed: () {
+                                            _searchController.clear();
+                                            _filterProducts('');
+                                          },
+                                        )
+                                      : null,
+                                  filled: true,
+                                  fillColor: const Color(0xffece9e9),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 10),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                        color: Color(0xff0e63ff), width: 1.5),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                        color: Color(0xff0e63ff), width: 2.0),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+
+                  // Content section
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: horizontalPadding, vertical: 8),
+                      child: _buildContent(),
+                    ),
                   ),
-                ),
-                // Content with responsive margin
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding, vertical: 8),
-                    child: _buildContent(),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           bottomNavigationBar: Container(
             decoration: BoxDecoration(
-              border: Border.all(color: ColorManager.navBorder, width: 2),
+              border: Border.all(color: Color(0xff0e63ff), width: 2),
               borderRadius: BorderRadius.horizontal(
-                  left: Radius.circular(30), right: Radius.circular(30)),
+                left: Radius.circular(30),
+                right: Radius.circular(30),
+              ),
             ),
             child: SnakeNavigationBar.color(
               behaviour: SnakeBarBehaviour.floating,
@@ -426,10 +414,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(25),
               ),
-              snakeViewColor: ColorManager.navBorder,
-              unselectedItemColor: ColorManager.navBorder,
+              backgroundColor: Colors.white,
+              snakeViewColor: Color(0xff0e63ff),
+              unselectedItemColor: Color(0xff0e63ff),
               currentIndex: _selectedItemPosition,
-              onTap: (index) => setState(() => _selectedItemPosition = index),
+              onTap: (index) {
+                setState(() {
+                  _isEditingProduct = false;
+                  _isAddingProduct = false;
+                  _selectedItemPosition = index;
+                });
+              },
               items: [
                 BottomNavigationBarItem(
                   icon: _selectedItemPosition == 0
@@ -465,12 +460,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildContent() {
+    if (_isEditingProduct) {
+      return _buildEditProductScreen();
+    } else if (_isAddingProduct) {
+      return _buildAddProductScreen(); // Add this condition
+    }
     switch (_selectedItemPosition) {
       case 0:
         return _buildUsersContent();
       case 1:
         // return AdminProductListing();
-        return _adminProductListing();
+        return adminProductListing();
       case 2:
         return _buildReportsContent();
       default:
@@ -478,76 +478,84 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
-  Widget _adminProductListing(){
-    debugPrint('Rendering product listing... Found ${_filteredProductList.length} products');
+  Widget adminProductListing() {
+    debugPrint(
+        'Rendering AWS DB product listing... Found ${products.length} products');
 
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      vertical: 8, horizontal: 16),
-                  child: const Text("Products Lists",
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-                const Spacer(),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800],
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.horizontal(
-                            right: Radius.circular(15),
-                            left: Radius.circular(15))),
-                    padding: const EdgeInsets.all(12),
+      body: Container(
+        decoration: BoxDecoration(color: Colors.white),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    child: const Text("Products Lists",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
-                  onPressed: () {
-                    debugPrint("Add product..!");
-                    _showAddProductDialog();
-                  },
-                  child: const Icon(Icons.add, color: Colors.white,),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _buildTableHeader(),
-            const SizedBox(height: 4),
-            Expanded(
-              child: _filteredProductList.isEmpty
-                  ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Lottie.asset("assets/animations/no_data_found.json", width: 200),
-                    const SizedBox(height: 10),
-                    const Text("No products found.", style: TextStyle(color: Colors.grey)),
-                    const SizedBox(height: 20),
-                    // Add a refresh button to reinitialize the product list
-                    /*ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          // Reinitialize the product list
-                          _filteredProductList = List.from(_productList);
-                          debugPrint('Refreshed product list: ${_filteredProductList.length} items');
-                        });
-                      },
-                      child: const Text("Refresh Products"),
-                    ),*/
-                  ],
-                ),
-              )
-                  : ListView.builder(
-                itemCount: _filteredProductList.length,
-                itemBuilder: (context, index) =>
-                    _buildTableRow(index, _filteredProductList[index]),
+                  const Spacer(),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xff0e63ff),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.horizontal(
+                              right: Radius.circular(15),
+                              left: Radius.circular(15))),
+                      padding: const EdgeInsets.all(12),
+                    ),
+                    onPressed: () {
+                      debugPrint("Add product..!");
+                      setState(() {
+                        _isAddingProduct = true;
+                      });
+                    },
+                    child: const Icon(
+                      Icons.add,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
-            ),
-            buildProductPagination()
-          ],
+              const SizedBox(height: 10),
+              buildTableHeader(),
+              const SizedBox(height: 4),
+              Expanded(
+                child: isProductLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : filteredProducts.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Lottie.asset(
+                                    "assets/animations/no_data_found.json",
+                                    width: 200),
+                                const SizedBox(height: 10),
+                                const Text("No products found.",
+                                    style: TextStyle(color: Colors.grey)),
+                                const SizedBox(height: 20),
+                              ],
+                            ),
+                          )
+                        : Builder(
+                            builder: (_) {
+                              final paginatedProducts = getPaginatedProducts();
+                              return ListView.builder(
+                                itemCount: paginatedProducts.length,
+                                itemBuilder: (context, index) => buildTableRow(
+                                    index, paginatedProducts[index]),
+                              );
+                            },
+                          ),
+              ),
+              buildProductPagination()
+            ],
+          ),
         ),
       ),
     );
@@ -555,30 +563,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Widget buildProductPagination() {
     // Only show pagination if we actually have products
-    if (_filteredProductList.isEmpty) {
+    if (filteredProducts.isEmpty) {
       return const SizedBox.shrink();
     }
 
     // Calculate total pages based on product list size
-    final int totalProducts = _productList.length;
+    final int totalProducts = filteredProducts.length;
     final int productsPerPage = 10;
     final int calculatedTotalPages = (totalProducts / productsPerPage).ceil();
-    final int totalPages = _hasMoreProduct ? calculatedTotalPages : _currentProductPage + 1;
+    final int totalPages =
+        _hasMoreProduct ? calculatedTotalPages : _currentProductPage + 1;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.start,
-        children: List.generate(totalPages > 0 ? totalPages : 1, (index) {
-          final pageNumber = index + 1;
+        children: List.generate(totalPages, (index) {
           final isSelected = index == _currentProductPage;
-
           return GestureDetector(
             onTap: () {
               setState(() {
                 _currentProductPage = index;
-                // Implement pagination logic here if needed
-                // For now, just keep the full list available
               });
             },
             child: Container(
@@ -587,12 +592,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
               margin: const EdgeInsets.symmetric(horizontal: 4),
               alignment: Alignment.center,
               child: Text(
-                '$pageNumber',
+                '${index + 1}',
                 style: TextStyle(
-                    color: const Color(0xff262A88),
-                    fontWeight:
-                    isSelected ? FontWeight.bold : FontWeight.normal,
-                    fontSize: isSelected ? 18 : 14),
+                  color: const Color(0xff262A88),
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  fontSize: isSelected ? 18 : 14,
+                ),
               ),
             ),
           );
@@ -628,58 +633,479 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  void _showEditProductDialog(Map<String, String> product) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        // Create text controllers with existing product data
-        final medicineNameController = TextEditingController(text: product['medicineName']);
-        final genericNameController = TextEditingController(text: product['genericName']);
-
-        return AlertDialog(
-          title: const Text('Edit Product'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+  Widget _buildEditProductScreen() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              TextField(
-                controller: medicineNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Medicine Name',
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade700,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.blue.shade200,
+                    width: 3,
+                  ),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new,
+                      color: Colors.white, size: 18),
+                  onPressed: () {
+                    setState(() {
+                      _isEditingProduct = false;
+                      _selectedProductForEdit = null;
+                    });
+                  },
                 ),
               ),
-              TextField(
-                controller: genericNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Generic Name',
+              const Spacer(),
+              Image.asset(
+                'assets/images/pharmafive_512x512.png',
+                width: 60,
+                height: 60,
+                errorBuilder: (context, error, stackTrace) => Icon(
+                  Icons.medical_services_outlined,
+                  color: Colors.blue.shade700,
+                  size: 30,
                 ),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Cancel'),
+
+          const SizedBox(height: 30),
+
+          Text(
+            '${_medicineNameEditController.text} (${_genericNameEditController.text})',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+
+          // 🧾 Centered Card Form
+          Center(
+            child: Card(
+              elevation: 6,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              color: Colors.white,
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Title
+/*
+                    Text(
+                      '${_medicineNameEditController.text} (${_genericNameEditController.text})',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+*/
+
+                    const SizedBox(height: 24),
+
+                    _buildLabeledInput(
+                        "Medicine name", _medicineNameEditController),
+                    const SizedBox(height: 16),
+                    _buildLabeledInput(
+                        "Generic name", _genericNameEditController),
+                    const SizedBox(height: 16),
+                    _buildLabeledInput(
+                        "Manufactured By", _manufacturerEditController),
+                    const SizedBox(height: 16),
+                    _buildLabeledInput(
+                        "Indications", _indicationsEditController),
+                    const SizedBox(height: 24),
+
+                    // Update button
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xff262A88),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 40, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () async {
+                        // Show loading indicator
+                        setState(() {
+                          _isUpdating = true;
+                        });
+
+                        try {
+                          // Parse serialNo as int
+                          // Parse serialNo from string to int
+                          int? serialNo;
+                          if (_selectedProductForEdit != null && _selectedProductForEdit?['serialNo'] != null) {
+                            serialNo = int.tryParse(_selectedProductForEdit!['serialNo'].toString());
+                          }
+
+                          // Create request model
+                          final requestModel = ProductUpdateRequestModel(
+                            serialNo: serialNo,
+                            medicineName: _medicineNameEditController.text,
+                            genericName: _genericNameEditController.text,
+                            manufacturedBy: _manufacturerEditController.text,
+                            indication: _indicationsEditController.text,
+                          );
+
+                          // Call API service
+                          final response = await _apiService.updateProduct(requestModel);
+
+                          if (response != null) {
+                            // Success - update local data
+                            setState(() {
+                              // Find the product in the list and update it
+                              final index = products.indexWhere((p) => p.serialNo == response.serialNo);
+                              if (index != -1) {
+                                // Create a new ProductListingResponseModel from response
+                                products[index] = ProductListingResponseModel(
+                                  serialNo: response.serialNo,
+                                  medicineName: response.medicineName,
+                                  genericName: response.genericName,
+                                  // manufacturedBy: response.manufacturedBy,
+                                  // indication: response.indication,
+                                  // createdDatetime: response.createdDatetime,
+                                  // updatedDatetime: response.updatedDatetime,
+                                );
+
+                                // Also update filtered products if needed
+                                final filteredIndex = filteredProducts.indexWhere((p) => p.serialNo == response.serialNo);
+                                if (filteredIndex != -1) {
+                                  filteredProducts[filteredIndex] = products[index]; // Use the same updated object
+                                }
+                              }
+
+                              _isEditingProduct = false;
+                              _selectedProductForEdit = null;
+                              _isUpdating = false;
+                            });
+
+                            // Refresh product list to ensure data is up to date
+                            loadProducts();
+
+                            _showToast("Product updated successfully", isError: false);
+                          } else {
+                            // Handle error
+                            setState(() {
+                              _isUpdating = false;
+                            });
+                            _showToast("Failed to update product", isError: true);
+                          }
+                        } catch (e) {
+                          // Handle exception
+                          setState(() {
+                            _isUpdating = false;
+                          });
+                          _showToast("Error: ${e.toString()}", isError: true);
+                        }
+                      },
+                      child: const Text("Update",
+                          style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            ElevatedButton(
-              onPressed: () {
-                // TODO: Implement update product logic
-                Navigator.of(context).pop();
-              },
-              child: const Text('Update'),
-            ),
-          ],
-        );
-      },
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildTableHeader() {
+  Widget _buildAddProductScreen() {
+    if (!_isConnected) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Lottie.asset(
+              "assets/animations/internet.json",
+              width: 250,
+              height: 250,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No Internet Connection',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () {
+                _updateInternetStatus(); // Retry checking internet status
+                _fetchUsers(); // Retry fetching users if internet is back
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show loading indicator if data is being fetched
+    if (_isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 12),
+            Text('Loading...', style: TextStyle(fontSize: 16)),
+          ],
+        ),
+      );
+    }
+
+    if (products.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Lottie.asset(
+              "assets/animations/no_data_found.json",
+              width: 250,
+              height: 250,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No ${selectedStatus.toLowerCase()} users found',
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          // 🔙 Back button & Logo (outside card)
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade700,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.blue.shade200,
+                    width: 3,
+                  ),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new,
+                      color: Colors.white, size: 18),
+                  onPressed: () {
+                    setState(() {
+                      _isAddingProduct = false;
+                    });
+                  },
+                ),
+              ),
+              const Spacer(),
+              Image.asset(
+                'assets/images/pharmafive_512x512.png',
+                width: 60,
+                height: 60,
+                errorBuilder: (context, error, stackTrace) => Icon(
+                  Icons.medical_services_outlined,
+                  color: Colors.blue.shade700,
+                  size: 30,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 30),
+
+          const Text(
+            'Add Products',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+
+          const SizedBox(height: 20),
+
+          // 🧾 Card with Form
+          Center(
+            child: Card(
+              elevation: 6,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              color: Colors.white,
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildLabeledInput(
+                        "Medicine name", _medicineNameAddController),
+                    const SizedBox(height: 16),
+                    _buildLabeledInput(
+                        "Generic name", _genericNameAddController),
+                    const SizedBox(height: 16),
+                    _buildLabeledInput(
+                        "Manufactured By", _manufacturerAddController),
+                    const SizedBox(height: 16),
+                    _buildLabeledInput(
+                        "Indications", _indicationsAddController),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xff262A88),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 40, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () async {
+                        final medicineName =
+                            _medicineNameAddController.text.trim();
+                        final genericName =
+                            _genericNameAddController.text.trim();
+                        final manufacturedBy =
+                            _manufacturerAddController.text.trim();
+                        final indication =
+                            _indicationsAddController.text.trim();
+
+                        if (medicineName.isEmpty ||
+                            genericName.isEmpty ||
+                            manufacturedBy.isEmpty ||
+                            indication.isEmpty) {
+                          _showToast("All fields are required", isError: true);
+                          return;
+                        }
+
+                        final requestModel = AddProductRequestModel(
+                          medicineName: medicineName,
+                          genericName: genericName,
+                          manufacturedBy: manufacturedBy,
+                          indication: indication,
+                        );
+
+                        final result = await _apiService.addProduct(
+                          medicineName: medicineName,
+                          genericName: genericName,
+                          manufacturedBy: manufacturedBy,
+                          indication: indication,
+                          requestModel: requestModel,
+                        );
+
+                        // Add debugging to see what you're getting back
+                        debugPrint("API response: $result");
+
+                        // Make sure you're checking the correct fields in your API response
+                        if (result != null && result['success'] == true) {
+                          _showToast("Product added successfully!",
+                              isError: false);
+                          setState(() {
+                            _isAddingProduct = false;
+                          });
+                          await loadProducts();
+                        } else {
+                          String errorMsg = "";
+                          if (result != null && result.containsKey('message')) {
+                            errorMsg = result['message'];
+                          }
+                          _showToast(errorMsg, isError: true);
+                        }
+                        setState(() {
+                          _isAddingProduct = false;
+                        });
+                      },
+                      child: const Text("Add",
+                          style: TextStyle(color: Colors.white)),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text("Or"),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: () {
+                        _showToast("Bulk upload triggered", isError: false);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade700,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        "Upload Bulk Products",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabeledInput(String label, TextEditingController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: label,
+            filled: true,
+            fillColor: const Color(0xfff5f5f5),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xff262A88)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xff262A88), width: 2),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildTableHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.blue[800],
+        color: Color(0xff0e63ff),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -713,7 +1139,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _buildTableRow(int index, Map<String, String> product) {
+  ///Static product listing
+  /*Widget buildTableRow(int index, Map<String, String> product) {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       color: Colors.white,
@@ -726,13 +1153,79 @@ class _AdminDashboardState extends State<AdminDashboard> {
             Expanded(flex: 3, child: Text(product["genericName"]!)),
             Expanded(
               flex: 1,
-              child: Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  shape: BoxShape.circle,
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedProductForEdit = product;
+                    _isEditingProduct = true;
+
+                    // Pre-fill controllers
+                    _medicineNameEditController.text =
+                        product['medicineName'] ?? '';
+                    _genericNameEditController.text =
+                        product['genericName'] ?? '';
+                    _manufacturerEditController.text = 'Manufactured By 1';
+                    _indicationsEditController.text = 'Indications 1';
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    shape: BoxShape.circle,
+                  ),
+                  child:
+                      Icon(Icons.edit, color: Colors.grey.shade800, size: 14),
                 ),
-                child: Icon(Icons.edit, color: Colors.grey.shade800, size: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }*/
+
+  ///DB product listing
+  Widget buildTableRow(int index, ProductListingResponseModel product) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+                flex: 1, child: Text('${(_currentProductPage * 10) + index + 1}.')),
+            Expanded(flex: 3, child: Text(product.medicineName ?? '')),
+            Expanded(flex: 3, child: Text(product.genericName ?? '')),
+            Expanded(
+              flex: 1,
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedProductForEdit = {
+                      'serialNo': product.serialNo?.toString() ?? '',
+                      'medicineName': product.medicineName ?? '',
+                      'genericName': product.genericName ?? ''
+                    };
+                    _isEditingProduct = true;
+                    // Pre-fill controllers
+                    _medicineNameEditController.text =
+                        product.medicineName ?? '';
+                    _genericNameEditController.text = product.genericName ?? '';
+                    _manufacturerEditController.text = 'Manufactured By 1';
+                    _indicationsEditController.text = 'Indications 1';
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    shape: BoxShape.circle,
+                  ),
+                  child:
+                      Icon(Icons.edit, color: Colors.grey.shade800, size: 14),
+                ),
               ),
             ),
           ],
@@ -741,71 +1234,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  void _onSearchChanged() {
+  // Search functionality
+  void onSearchChanged() {
     String query = _searchController.text.toLowerCase();
     debugPrint('Searching: "$query"');
 
     setState(() {
       if (query.isEmpty) {
-        // If no search query, show all products
-        _filteredProductList = List.from(_productList);
+        filteredProducts = List.from(products);
       } else {
-        // Filter products based on search query
-        _filteredProductList = _productList
-            .where((product) =>
-        product["medicineName"]!.toLowerCase().contains(query) ||
-            product["genericName"]!.toLowerCase().contains(query))
-            .toList();
+        filteredProducts = products.where((product) {
+          final name = product.medicineName?.toLowerCase() ?? '';
+          final generic = product.genericName?.toLowerCase() ?? '';
+          return name.contains(query) || generic.contains(query);
+        }).toList();
       }
 
-      debugPrint('Filtered count: ${_filteredProductList.length}');
+      _currentProductPage = 0; // 👈 reset to first page on search
+      debugPrint('Filtered count: ${filteredProducts.length}');
     });
-  }
-
-  void _showAddProductDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        final medicineNameController = TextEditingController();
-        final genericNameController = TextEditingController();
-
-        return AlertDialog(
-          title: const Text('Add New Product'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: medicineNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Medicine Name',
-                ),
-              ),
-              TextField(
-                controller: genericNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Generic Name',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                // TODO: Implement add product logic
-                Navigator.of(context).pop();
-              },
-              child: const Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   Widget _buildReportsContent() {
@@ -856,7 +1303,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       // Logout logic
                       _showLogoutDialog();
                     },
-                    icon: const Icon(Icons.logout),
+                    icon: const Icon(Icons.power_settings_new),
                     label: const Text('Logout'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xff262A88),
@@ -934,6 +1381,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
             side: BorderSide(color: Colors.grey.shade300),
@@ -970,21 +1418,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 SizedBox(
                   height: 30,
                   child: ElevatedButton(
-                    onPressed: () async {
+                    /*onPressed: () async {
                       try {
                         await SharedPreferenceHelper.clearSession();
                         Navigator.pushAndRemoveUntil(
                           context,
-                          MaterialPageRoute(builder: (context) => const LoginScreen()),
-                              (route) => false,
+                          MaterialPageRoute(
+                              builder: (context) => const LoginScreen()),
+                          (route) => false,
                         );
                       } catch (e) {
                         print('Logout failed: $e');
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Logout failed. Please try again.')),
+                          const SnackBar(
+                              content:
+                                  Text('Logout failed. Please try again.')),
                         );
                       }
-                    },
+                    },*/
+                    onPressed: _logout,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
@@ -1001,6 +1453,29 @@ class _AdminDashboardState extends State<AdminDashboard> {
         );
       },
     );
+  }
+
+  Future<void> _logout() async {
+    try {
+      final email = await SharedPreferenceHelper.getUserEmail();
+      if (email != null && email.isNotEmpty) {
+        await ApiService().logoutUser(userEmail: email);
+      }
+
+      await SharedPreferenceHelper.clearSession();
+      _showToast("Logout successful.", isError: false);
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      debugPrint('Logout failed: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Logout failed. Please try again.')),
+      );
+      _showToast('Logout failed. Please try again.', isError: true);
+    }
   }
 
   Widget buildUserList() {
@@ -1135,7 +1610,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               // Status
               ConstrainedBox(
                 constraints: const BoxConstraints(minWidth: 80),
-                child: buildStatusIndicator(item['status'], item['id']),
+                child: buildStatusIndicator(item['status'], item['email']),
               ),
             ],
           ),
@@ -1144,17 +1619,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // Method to fetch more users when scrolling
-  void _fetchMoreUsers() {
-    setState(() {
-      _currentPage++;
-    });
-    _fetchUsers();
-  }
-
-  Widget buildStatusIndicator(dynamic status, dynamic id) {
+  Widget buildStatusIndicator(dynamic status, String email) {
     final String userStatus = _normalizeStatus(status);
-    final int userId = _safeIntConvert(id);
+    // final int userId = _safeIntConvert(id);
     final screenWidth = MediaQuery.of(context).size.width;
     final bool isCompact = screenWidth < 400;
 
@@ -1170,7 +1637,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             _statusCircle(
               color: Colors.red,
               icon: Icons.close,
-              onTap: () => _showRejectDialog(userId),
+              onTap: () => _showRejectDialog(email),
               size: iconSize,
               padding: circlePadding,
             ),
@@ -1178,7 +1645,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             _statusCircle(
               color: Colors.green,
               icon: Icons.check,
-              onTap: () => _showApproveDialog(userId),
+              onTap: () => _showApproveDialog(email),
               size: iconSize,
               padding: circlePadding,
             ),
@@ -1190,7 +1657,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             _statusLabel('Approved', Colors.green),
             SizedBox(width: spacing),
-            _editCircle(() => _showRejectDialog(userId)),
+            _editCircle(() => _showRejectDialog(email)),
           ],
         );
 
@@ -1199,7 +1666,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             _statusLabel('Rejected', Colors.red),
             SizedBox(width: spacing),
-            _editCircle(() => _showApproveDialog(userId)),
+            _editCircle(() => _showApproveDialog(email)),
           ],
         );
 
@@ -1311,11 +1778,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return 0;
   }
 
-  void _showApproveDialog(int id) {
+  void _showApproveDialog(String email) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
             side: BorderSide(color: Colors.grey.shade300),
@@ -1369,7 +1837,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
                     onPressed: () {
                       Navigator.of(context).pop();
-                      _updateStatus(id, 'Active');
+                      // _updateStatus(id, 'Active');
+                      _updateStatusByEmail(email, 'Active');
                     },
                   ),
                 ),
@@ -1381,11 +1850,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  void _showRejectDialog(int id) {
+  void _showRejectDialog(String email) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
             side: BorderSide(color: Colors.grey.shade300),
@@ -1433,7 +1903,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     child: const Text('Yes, Reject'),
                     onPressed: () {
                       Navigator.of(context).pop();
-                      _updateStatus(id, 'Reject');
+                      // _updateStatus(id, 'Reject');
+                      _updateStatusByEmail(email, 'Reject');
                     },
                   ),
                 ),
@@ -1445,59 +1916,39 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  /*void _updateStatus(dynamic id, String newStatus) async {
-    // Use the safe conversion method
-    final userId = _safeIntConvert(id);
-
-    try {
-      final url = Uri.parse("${_apiService.baseUrl}/update-status");
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'id': userId,
-          'status': newStatus.toUpperCase()
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        setState(() {
-          _currentPage = 0;
-          _usersList.clear();
-        });
-        _fetchUsers();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update status: ${response.body}')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating status: $e')),
-      );
-    }
-  }*/
-
   Widget _buildStatusDropdown() {
     return DropdownButton<String>(
       value: selectedStatus,
       underline: Container(),
-      icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xff262A88)),
+      icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xff0e63ff)),
       onChanged: (String? newValue) {
         if (newValue != null) {
           setState(() {
             selectedStatus = newValue;
-            _currentPage = 0; // Reset to first page
-            _hasMore = true; // Reset has more flag
+            _currentPage = 0;
+            _hasMore = true;
           });
           _fetchUsers();
         }
       },
-      items: <String>['Pending', 'Approved', 'Rejected']
-          .map<DropdownMenuItem<String>>((String value) {
+      items: <String>['Pending', 'Approved', 'Rejected'].map((String value) {
         return DropdownMenuItem<String>(
           value: value,
-          child: Text(value),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: Color(0xFFB0BEC5), // light grey border like the image
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
         );
       }).toList(),
     );
@@ -1553,6 +2004,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   void dispose() {
     _searchController.dispose();
+    _focusNode.dispose();
+    _medicineNameEditController.dispose();
+    _genericNameEditController.dispose();
+    _manufacturerEditController.dispose();
+    _indicationsEditController.dispose();
+    _medicineNameAddController.dispose();
+    _genericNameAddController.dispose();
+    _manufacturerAddController.dispose();
+    _indicationsAddController.dispose();
     super.dispose();
   }
 }

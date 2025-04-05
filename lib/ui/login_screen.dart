@@ -6,6 +6,8 @@ import 'package:pharma_five/ui/walk_through_screen.dart';
 import '../helper/color_manager.dart';
 import '../helper/shared_preferences.dart';
 import '../service/api_service.dart';
+import 'package:flutter/gestures.dart';
+import 'admin_approval_screen.dart';
 import 'doctor/user_dashboard.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -28,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.BOTTOM,
       timeInSecForIosWeb: 2,
-      backgroundColor: isError ? Colors.red : const Color(0xFF0E8388),
+      backgroundColor: isError ? Colors.red : const Color(0xff0e63ff),
       textColor: Colors.white,
       fontSize: 16.0,
     );
@@ -37,29 +39,19 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _checkSession();
+    _checkAndClearSession();
   }
 
-  Future<void> _checkSession() async {
+  Future<void> _checkAndClearSession() async {
     await SharedPreferenceHelper.init();
+    final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
+    final email = await SharedPreferenceHelper.getUserEmail();
 
-    bool isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
-    String? userType = await SharedPreferenceHelper.getUserType();
-
-    if (isLoggedIn && userType != null) {
-      Widget nextScreen = userType == 'admin'
-          ? const AdminDashboard()
-          : UserDashboardScreen();
-
-      Future.microtask(() {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => nextScreen),
-        );
-      });
+    if (isLoggedIn && email != null && email.isNotEmpty) {
+      await ApiService().logoutUser(userEmail: email);
+      await SharedPreferenceHelper.clearSession();
     }
   }
-
 
   /*void _validateForm() async {
     try {
@@ -116,38 +108,126 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }*/
 
-  void _validateForm() async {
+  /*Future<void> _validateForm() async {
     try {
       await SharedPreferenceHelper.init();
 
       if (_formKey.currentState!.validate()) {
         setState(() => _isLoading = true);
 
-        final result = await ApiService().userLogin(
-          email: _emailController.text,
+        final email = _emailController.text.trim();
+        final loginResult = await ApiService().userLogin(
+          email: email,
           password: _passwordController.text,
         );
 
-        if (result != null && result['success'] == true) {
-          final role = result['role'] ?? 'User';
-          _showToast(
-              "${role[0].toUpperCase()}${role.substring(1)} Login successful!");
+        if (loginResult != null && loginResult['success'] == true) {
+          final data = loginResult['data'];
+          final status = data['status'].toString().toLowerCase();  // e.g., active/pending/rejected
+          final role = data['role'].toString().toLowerCase();      // e.g., admin/user
 
-          Widget nextScreen = role == 'admin'
-              ? const AdminDashboard()
-              : UserDashboardScreen();
+          // Save session info
+          await SharedPreferenceHelper.setLoggedIn(true);
+          await SharedPreferenceHelper.setUserEmail(email);
+          await SharedPreferenceHelper.setUserType(role);
+          await SharedPreferenceHelper.setUserStatus(status);
 
-          debugPrint("Navigating to ${role == 'admin'
-              ? 'AdminDashboard'
-              : 'UserDashboard'}");
+          _showToast("${role[0].toUpperCase()}${role.substring(1)} login successful!");
+
+          // ✅ Navigate based on role & status
+          if (role == 'admin') {
+            debugPrint("Admin user found");
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const AdminDashboard()),
+            );
+          } else if (status == 'active') {
+            debugPrint("Active user found");
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
+            );
+          } *//*else if(status == 'reject' || status == 'pending'){
+            debugPrint("Pending & Rejected user found 1");
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
+            );*//*
+          // }
+        } else {
+          final message = loginResult?['message'] ?? "Login failed.";
+          debugPrint("Pending & Rejected user found 2");
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
+          );
+          _showToast(message, isError: true);
+        }
+      }
+    } catch (e) {
+      _showToast("Login failed. Please try again.", isError: true);
+      debugPrint('Login error: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }*/
+
+
+  Future<void> _validateForm() async {
+    try {
+      await SharedPreferenceHelper.init();
+
+      if (_formKey.currentState!.validate()) {
+        setState(() => _isLoading = true);
+
+        final email = _emailController.text.trim();
+        final password = _passwordController.text;
+
+        final loginResult = await ApiService().userLogin(email: email, password: password);
+
+        final bool success = loginResult?['success'] ?? false;
+        final String message = loginResult?['message'] ?? '';
+        final Map<String, dynamic>? data = loginResult?['data'];
+        final String role = loginResult?['role'] ?? '';
+        final String status = loginResult?['status'] ?? '';
+
+        await SharedPreferenceHelper.setLoggedIn(true);
+        await SharedPreferenceHelper.setUserEmail(email);
+        await SharedPreferenceHelper.setUserType(role);
+        await SharedPreferenceHelper.setUserStatus(status);
+
+        if (success && data != null) {
+          /*await SharedPreferenceHelper.setLoggedIn(true);
+          await SharedPreferenceHelper.setUserEmail(email);
+          await SharedPreferenceHelper.setUserType(role);
+          await SharedPreferenceHelper.setUserStatus(status);*/
+
+          _showToast("${role[0].toUpperCase()}${role.substring(1)} login successful!");
+
+          if (role == 'admin') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const AdminDashboard()),
+            );
+          } else if (role == 'user' && status == 'active') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
+            );
+          }
+        } else if (!success &&
+            (message.contains("Account is not ACTIVE. Current status: Pending") || message.contains("Account is not ACTIVE. Current status: Reject"))) {
+          // await SharedPreferenceHelper.setLoggedIn(true);
+          // await SharedPreferenceHelper.setUserEmail(email);
+          // await SharedPreferenceHelper.setUserType(role);
+          // await SharedPreferenceHelper.setUserStatus(status);
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => nextScreen),
+            MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
           );
         } else {
-          _showToast(result?['message'] ?? "Login failed. Please try again.",
-              isError: true);
+          _showToast(message.isNotEmpty ? message : "Login failed.", isError: true);
         }
       }
     } catch (e) {
@@ -188,10 +268,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0E8388),
+                              color: const Color(0xff0e63ff),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: const Color(0xFF5AB1B4),
+                                color: const Color(0xFF9ABEE3),
                                 width: 2,
                               ),
                             ),
@@ -248,7 +328,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         },*/
                         onPressed: _isLoading ? null : _validateForm,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0E8388),
+                          backgroundColor: const Color(0xff0e63ff),
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(30)),
@@ -261,7 +341,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
                             valueColor: AlwaysStoppedAnimation<Color>(
-                                Color(0xFF0E8388)),
+                                Color(0xff0e63ff)),
                           ),
                         )
                             : const Text('Log In',
@@ -270,19 +350,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 fontWeight: FontWeight.w600)),
                       ),
                     ),
-
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Expanded(child: Divider(color: Colors.grey.shade300)),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           child: Text('or',
                               style: TextStyle(
                                   color: Colors.grey.shade600, fontSize: 14)),
                         ),
-                        Expanded(child: Divider(color: Colors.grey.shade300)),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -300,13 +377,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.black,
-                          side: const BorderSide(color: Color(0xFF0E8388)),
+                          side: const BorderSide(color: Color(0xff0e63ff)),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(30)),
                         ),
                         child: const Text('Sign Up',
                             style: TextStyle(
-                                color: Color(0xFF0E8388),
+                                color: Color(0xff0e63ff),
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600)),
                       ),

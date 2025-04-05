@@ -7,6 +7,7 @@ class SharedPreferenceHelper {
   static const String _isLoggedInKey = 'isLoggedIn';
   static const String _userEmailKey = 'userEmail';
   static const String _userTypeKey = 'userType';
+  static const String _userStatusKey = 'userStatus';
 
   static SharedPreferences? _preferences;
 
@@ -99,6 +100,26 @@ class SharedPreferenceHelper {
         print('Error getting user type: $e');
       }
       return 'user';
+    }
+  }
+
+  static Future<bool> setUserStatus(String status) async {
+    try {
+      final prefs = await _getInstance();
+      return await prefs.setString(_userStatusKey, status);
+    } catch (e) {
+      if (kDebugMode) print('Error setting user status: $e');
+      return false;
+    }
+  }
+
+  static Future<String?> getUserStatus() async {
+    try {
+      final prefs = await _getInstance();
+      return prefs.getString(_userStatusKey);
+    } catch (e) {
+      if (kDebugMode) print('Error getting user status: $e');
+      return null;
     }
   }
 

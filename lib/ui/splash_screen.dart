@@ -3,6 +3,8 @@ import 'package:pharma_five/ui/walk_through_screen.dart';
 import 'dart:async';
 import 'login_screen.dart';
 
+
+
 class SplashScreen extends StatefulWidget {
   @override
   _SplashScreenState createState() => _SplashScreenState();

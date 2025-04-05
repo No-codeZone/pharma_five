@@ -34,7 +34,7 @@ class _AddProductState extends State<AddProduct> {
           decoration: BoxDecoration(
             color: Colors.grey.shade100,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.blue[800]!),
+            border: Border.all(color: Color(0xff0e63ff)!),
           ),
           child: TextField(
             controller: controller,
@@ -88,7 +88,7 @@ class _AddProductState extends State<AddProduct> {
 
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[800],
+                  backgroundColor: Color(0xff0e63ff),
                   padding: const EdgeInsets.symmetric(
                       horizontal: 40, vertical: 12),
                   shape: RoundedRectangleBorder(

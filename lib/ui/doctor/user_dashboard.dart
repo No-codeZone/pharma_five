@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 import 'package:pharma_five/ui/login_screen.dart';
 import '../../helper/shared_preferences.dart';
+import '../../service/api_service.dart';
+import '../admin_approval_screen.dart';
 
 class UserDashboardScreen extends StatefulWidget {
   const UserDashboardScreen({Key? key}) : super(key: key);
@@ -9,7 +12,7 @@ class UserDashboardScreen extends StatefulWidget {
   State<UserDashboardScreen> createState() => _UserDashboardScreenState();
 }
 
-class _UserDashboardScreenState extends State<UserDashboardScreen> {
+class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, String>> _allProducts = [];
   List<Map<String, String>> _filteredProducts = [];
@@ -17,10 +20,108 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   int _currentPage = 0;
   final int _itemsPerPage = 10;
   bool _hasMore = true;
+  bool _isLoading = true;
+  bool isUserActive = false;
+  bool _isRefreshing = false;
+  String _userStatus = 'pending'; // Store the actual status string
+  String _lastRefreshed = ''; // Track when status was last checked
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _validateUserAndLoadData();
+  }
+
+  Future<void> _validateUserAndLoadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    await SharedPreferenceHelper.init();
+    final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
+    final email = await SharedPreferenceHelper.getUserEmail();
+
+    // Redirect to login if not logged in
+    if (!isLoggedIn || email == null || email.isEmpty) {
+      _navigateToLogin();
+      return;
+    }
+
+    // Check user status via API
+    try {
+      final result = await ApiService().getUsers(search: email);
+      final users = result['content'] ?? [];
+
+      if (users.isNotEmpty) {
+        final currentStatus = users[0]['status'].toString().toLowerCase();
+        await SharedPreferenceHelper.setUserStatus(currentStatus);
+
+        // Set last refreshed time
+        final now = DateTime.now();
+        final formattedTime = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+
+        // Update state based on user status
+        setState(() {
+          _userStatus = currentStatus; // Store the actual status string
+          isUserActive = currentStatus == 'active';
+          _isLoading = false;
+          _isRefreshing = false;
+          _lastRefreshed = formattedTime; // Store time of last refresh
+        });
+
+        // Only load product data if user is active
+        if (isUserActive) {
+          _loadProductData();
+        }
+      } else {
+        // No user found in API response
+        setState(() {
+          _userStatus = 'not found';
+          isUserActive = false;
+          _isLoading = false;
+          _isRefreshing = false;
+
+          // Set last refreshed time
+          final now = DateTime.now();
+          _lastRefreshed = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+        });
+      }
+    } catch (e) {
+      debugPrint('Status check failed: $e');
+
+      // Fallback to local status if API fails
+      final status = (await SharedPreferenceHelper.getUserStatus())?.toLowerCase() ?? 'pending';
+
+      // Set last refreshed time
+      final now = DateTime.now();
+      final formattedTime = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+
+      setState(() {
+        _userStatus = status;
+        isUserActive = status == 'active';
+        _isLoading = false;
+        _isRefreshing = false;
+        _lastRefreshed = formattedTime;
+      });
+
+      // Show error snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not connect to server. Using local status.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+
+      // Load product data only if user is active (based on local status)
+      if (isUserActive) {
+        _loadProductData();
+      }
+    }
+  }
+
+  void _loadProductData() {
+    // Simulate loading product data
     _allProducts = List.generate(50, (index) {
       return {
         'medicineName': 'Medicine name ${index + 1}',
@@ -30,6 +131,26 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
 
     _filteredProducts = List.from(_allProducts);
     _updateHasMore();
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  void _navigateToApprovalScreen() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
+    );
+  }
+
+  void _navigateToLogin() {
+    SharedPreferenceHelper.clearSession().then((_) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    });
   }
 
   void _searchProducts(String query) {
@@ -44,18 +165,44 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _validateUserAndLoadData();
+    }
+  }
+
   void _updateHasMore() {
     final totalPages = (_filteredProducts.length / _itemsPerPage).ceil();
     _hasMore = _currentPage + 1 < totalPages;
   }
 
   Future<void> _logout() async {
-    await SharedPreferenceHelper.clearSession();
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false,
-    );
+    try {
+      final email = await SharedPreferenceHelper.getUserEmail();
+      if (email != null && email.isNotEmpty) {
+        await ApiService().logoutUser(userEmail: email);
+      }
+
+      await SharedPreferenceHelper.clearSession();
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+            (route) => false,
+      );
+    } catch (e) {
+      debugPrint('Logout failed: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Logout failed. Please try again.')),
+      );
+    }
   }
 
   List<Map<String, String>> _getCurrentPageItems() {
@@ -66,9 +213,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Widget _buildPagination() {
-    int totalPages = _hasMore
-        ? (_filteredProducts.length / _itemsPerPage).ceil()
-        : _currentPage + 1;
+    int totalPages = (_filteredProducts.length / _itemsPerPage).ceil();
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -105,37 +250,240 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildAppBar() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
     final horizontalPadding = isSmallScreen ? 12.0 : 24.0;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
+      child: Row(
+        children: [
+          Image.asset(
+            'assets/images/pharmafive_512x512.png',
+            width: 60,
+            height: 60,
+            errorBuilder: (_, __, ___) =>
+            const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color(0xff262A88), size: 28),
+            onPressed: _showLogoutDialog,
+          )
+        ],
+      ),
+    );
+  }
+
+  // Get color based on status
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'active':
+        return Colors.green;
+      case 'reject':
+        return Colors.red;
+      case 'blocked':
+        return Colors.red.shade800;
+      case 'pending':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  // Get status display text
+  String _getStatusText() {
+    switch (_userStatus.toLowerCase()) {
+      case 'active':
+        return 'Approved ✓';
+      case 'reject':
+        return 'Rejected ✗';
+      case 'blocked':
+        return 'Blocked ✗';
+      case 'pending':
+        return 'Pending Review';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  Widget _buildPendingApprovalMessage() {
+    return Expanded(
+      child: Center(
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Top Bar
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
-              child: Row(
-                children: [
-                  Image.asset(
-                    'assets/images/pharmafive_512x512.png',
-                    width: 60,
-                    height: 60,
-                    errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
+            Lottie.asset("assets/animations/waiting.json",
+                width: 300, height: 150),
+            const SizedBox(height: 24),
+
+            // Status indicator
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  "Account Status: ",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xff262A88),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.logout, color: Color(0xff262A88), size: 28),
-                    onPressed: _showLogoutDialog,
-                  )
-                ],
+                ),
+                Text(
+                  _getStatusText(),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _getStatusColor(_userStatus),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+            Text(
+              _userStatus == 'active'
+                  ? "Your account is now approved! You can view products."
+                  : "Your account has to be approved by Admin. Please wait.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: _userStatus == 'active' ? Colors.green : const Color(0xff262A88),
               ),
             ),
+            const SizedBox(height: 12),
+            Text(
+              _userStatus.toLowerCase() == 'rejected'
+                  ? "Your application was not approved. Please contact support."
+                  : (_userStatus.toLowerCase() == 'blocked'
+                  ? "Your account has been blocked. Please contact support."
+                  : "You will be able to view product listings once approved."),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: _userStatus.toLowerCase() == 'rejected' || _userStatus.toLowerCase() == 'blocked'
+                    ? Colors.red.shade700
+                    : Colors.grey.shade700,
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Refresh button with loading indicator
+            _isRefreshing
+                ? Column(
+              children: [
+                const CircularProgressIndicator(color: Color(0xff0e63ff)),
+                const SizedBox(height: 8),
+                Text(
+                  "Checking status...",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            )
+                : Column(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _isRefreshing = true;
+                    });
+                    // Check status
+                    _validateUserAndLoadData();
+                  },
+                  icon: const Icon(
+                    Icons.refresh,
+                    color: Color(0xff0e63ff),
+                    size: 40,
+                  ),
+                ),
+              ],
+            ),
+
+            // If active, show a button to view products
+            if (_userStatus.toLowerCase() == 'active') ...[
+              const SizedBox(height: 30),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    // This will rebuild the UI with the product listing
+                    // since isUserActive is already true at this point
+                  });
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xff0e63ff),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text("View Products", style: TextStyle(fontSize: 16)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductListing() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 600;
+    final horizontalPadding = isSmallScreen ? 12.0 : 24.0;
+
+    return Expanded(
+      child: RefreshIndicator(
+        onRefresh: () async {
+          // Show refresh indicator
+          setState(() {
+            _isRefreshing = true;
+          });
+          // Check user status and reload data
+          await _validateUserAndLoadData();
+        },
+        color: const Color(0xff0e63ff),
+        backgroundColor: Colors.white,
+        displacement: 40,
+        strokeWidth: 3,
+        child: Column(
+          children: [
+            // Status indicator in product listing view
+            /*Container(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    "Account Status: Approved",
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  *//*Text(
+                    "Pull down to refresh status",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),*//*
+                ],
+              ),
+            ),*/
 
             // Search
             Padding(
@@ -173,7 +521,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: Card(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                color: Color(0xff185794),
+                color: const Color(0xff185794),
                 elevation: 1,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -181,7 +529,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                     children: const [
                       Expanded(flex: 1, child: Text('No.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
                       Expanded(flex: 3, child: Text('Medicine Name', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-                      Expanded(flex: 3, child: Text('Generic Name', style: TextStyle(fontWeight: FontWeight.bold,color: Colors.white))),
+                      Expanded(flex: 3, child: Text('Generic Name', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
                     ],
                   ),
                 ),
@@ -192,35 +540,85 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
 
             // Product List
             Expanded(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: ListView.builder(
-                  itemCount: _getCurrentPageItems().length,
-                  itemBuilder: (context, index) {
-                    final item = _getCurrentPageItems()[index];
-                    final serial = _currentPage * _itemsPerPage + index + 1;
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      color: Colors.white,
-                      elevation: 1.5,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Row(
-                          children: [
-                            Expanded(flex: 1, child: Text('$serial')),
-                            Expanded(flex: 3, child: Text(item['medicineName']!)),
-                            Expanded(flex: 3, child: Text(item['genericName']!)),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+              child: _buildProductListView(horizontalPadding),
             ),
 
             _buildPagination(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Extracted method for the ListView to use with RefreshIndicator
+  Widget _buildProductListView(double horizontalPadding) {
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(), // Important for pull to refresh to work even when content doesn't fill screen
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      itemCount: _getCurrentPageItems().length + 1, // +1 for the pull to refresh instruction
+      itemBuilder: (context, index) {
+        // First item is a hint about pull to refresh
+        if (index == 0) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 16),
+              child: Text(
+                "↓ Pull down to refresh account status ↓",
+                style: TextStyle(
+                  color: Colors.grey.shade400,
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          );
+        }
+
+        // Adjust index to account for the instruction item
+        final adjustedIndex = index - 1;
+        final item = _getCurrentPageItems()[adjustedIndex];
+        final serial = _currentPage * _itemsPerPage + adjustedIndex + 1;
+
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          color: Colors.white,
+          elevation: 1.5,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Expanded(flex: 1, child: Text('$serial')),
+                Expanded(flex: 3, child: Text(item['medicineName']!)),
+                Expanded(flex: 3, child: Text(item['genericName']!)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Top Bar (visible for both active and pending/rejected users)
+            _buildAppBar(),
+
+            // Content based on user status
+            isUserActive
+                ? _buildProductListing()
+                : _buildPendingApprovalMessage(),
           ],
         ),
       ),
@@ -232,6 +630,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
             side: BorderSide(color: Colors.grey.shade300),
@@ -268,20 +667,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                 SizedBox(
                   height: 30,
                   child: ElevatedButton(
-                    onPressed: () async {
-                      try {
-                        await SharedPreferenceHelper.clearSession();
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(builder: (context) => const LoginScreen()),
-                              (route) => false,
-                        );
-                      } catch (e) {
-                        print('Logout failed: $e');
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Logout failed. Please try again.')),
-                        );
-                      }
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _logout();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
@@ -300,5 +688,4 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       },
     );
   }
-
 }
