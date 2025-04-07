@@ -32,8 +32,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   bool _isEmailValid = true;
   bool _isPasswordValid = true;
 
-  Timer? _redirectTimer;
-
   void _showToast(String message, bool isError) {
     Fluttertoast.showToast(
       msg: message,
@@ -77,15 +75,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           : "Mobile number must be 10 digits";
     }
 
-    /*if (_emailController.text.trim().isEmpty ||
-        !RegExp(r'^[a-zA-Z0-9.*%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
-            .hasMatch(_emailController.text)) {
-      _isEmailValid = false;
-      hasError = true;
-      _validationMessage = _emailController.text.trim().isEmpty
-          ? "Please enter email address"
-          : "Please enter a valid email address";
-    }*/
+    // final emailPattern = r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
+    // final isEmailValidRegex = RegExp(emailPattern).hasMatch(_emailController.text.trim());
+    //
+    // if (_emailController.text.trim().isEmpty || !isEmailValidRegex) {
+    //   _isEmailValid = false;
+    //   hasError = true;
+    //   _validationMessage = _emailController.text.trim().isEmpty
+    //       ? "Please enter email"
+    //       : "Enter a valid email address";
+    // }
 
     if (_passwordController.text.trim().isEmpty || _passwordController.text.length < 8) {
       _isPasswordValid = false;
@@ -100,7 +99,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       return;
     }
 
-    // Check internet connectivity
     final isConnected = await InternetConnectivityService().checkInternetConnectivity();
     if (!isConnected) {
       _showToast("No internet connection. Please check your connection and try again.", true);
@@ -118,38 +116,61 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         organisationName: _organizationController.text.trim(),
         password: _passwordController.text.trim(),
       )
-          .timeout(
-        const Duration(seconds: 60),
-        onTimeout: () => throw TimeoutException("Request timed out"),
-      );
+          .timeout(const Duration(seconds: 60),
+          onTimeout: () => throw TimeoutException("Request timed out"));
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
       if (response['success']) {
-        _showToast(response['message'], false); // false: not an error
+        // Clear fields
+        _nameController.clear();
+        _organizationController.clear();
+        _mobileController.clear();
+        _emailController.clear();
+        _passwordController.clear();
 
-        // Clear all controllers inside setState so that the UI updates
         setState(() {
-          _nameController.clear();
-          _organizationController.clear();
-          _mobileController.clear();
-          _emailController.clear();
-          _passwordController.clear();
+          _validationMessage = null;
+          _isNameValid = true;
+          _isOrganizationValid = true;
+          _isMobileValid = true;
+          _isEmailValid = true;
+          _isPasswordValid = true;
         });
 
-        // Delay navigation for a short time to let the user see the success message
-        _redirectTimer = Timer(const Duration(milliseconds: 500), () {
+        _showToast(response['message'], false);
+
+        Future.delayed(const Duration(milliseconds: 800), () {
           if (mounted) {
-            Navigator.pushReplacement(
+            Navigator.pushAndRemoveUntil(
               context,
-              MaterialPageRoute(builder: (context) => const LoginScreen()),
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
             );
           }
         });
       } else {
         setState(() => _validationMessage = response['message']);
-        _showToast(response['message'], false);
+        _showToast(response['message'], true);
+
+        debugPrint("Registration response is here===\t${response['message'].toString()}");
+
+        _nameController.clear();
+        _organizationController.clear();
+        _mobileController.clear();
+        _emailController.clear();
+        _passwordController.clear();
+
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+            );
+          }
+        });
       }
     } on TimeoutException {
       setState(() {
@@ -213,15 +234,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   const SizedBox(height: 16),
                   const Text(
                     'Signup to Pharma Five Imports',
-                    style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'Join us today for easy\nmedicine management!',
-                    style: TextStyle(fontSize: 14, color: Colors.black54,),
+                    style: TextStyle(fontSize: 14, color: Colors.black54),
                   ),
                   const SizedBox(height: 24),
 
@@ -275,7 +293,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   ),
 
                   const SizedBox(height: 12),
-
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -286,6 +303,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
+
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -308,7 +326,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
                   Center(
                     child: RichText(
                       textAlign: TextAlign.center,
@@ -439,6 +456,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       ],
     );
   }
+
   @override
   void dispose() {
     _nameController.dispose();

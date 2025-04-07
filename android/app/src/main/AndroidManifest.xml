@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-feature android:name="android.hardware.wifi" />
     <application
-        android:label="PharmaFive"
+        android:label="Pharma Five"
         android:name="${applicationName}"
         android:icon="@drawable/pharmafive_512x512">
         <activity

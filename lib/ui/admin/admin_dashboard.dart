@@ -7,11 +7,13 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:lottie/lottie.dart';
 import 'package:pharma_five/service/api_service.dart';
-
+import 'package:pharma_five/ui/admin/widget/bulk_upload_widget.dart';
+import 'package:excel/excel.dart' as ex;
 import '../../helper/shared_preferences.dart';
 import '../../model/add_product_request_model.dart';
 import '../../model/product_listing_response_model.dart';
 import '../../model/product_update_request_model.dart';
+import '../../model/product_update_response_model.dart';
 import '../login_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -481,11 +483,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(color: Colors.white),
+        decoration: const BoxDecoration(color: Colors.white),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
             children: [
+              // Header Row
               Row(
                 children: [
                   Container(
@@ -498,11 +501,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   const Spacer(),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xff0e63ff),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.horizontal(
-                              right: Radius.circular(15),
-                              left: Radius.circular(15))),
+                      backgroundColor: const Color(0xff0e63ff),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.horizontal(
+                          right: Radius.circular(15),
+                          left: Radius.circular(15),
+                        ),
+                      ),
                       padding: const EdgeInsets.all(12),
                     ),
                     onPressed: () {
@@ -511,46 +516,68 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         _isAddingProduct = true;
                       });
                     },
-                    child: const Icon(
-                      Icons.add,
-                      color: Colors.white,
-                    ),
+                    child: const Icon(Icons.add, color: Colors.white),
                   ),
                 ],
               ),
+
               const SizedBox(height: 10),
+
+              // Table Header
               buildTableHeader(),
+
               const SizedBox(height: 4),
+
+              // Product List + Pull to Refresh
               Expanded(
-                child: isProductLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : filteredProducts.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Lottie.asset(
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    setState(() {
+                      isProductLoading = true;
+                    });
+                    await loadProducts();
+                    Fluttertoast.showToast(
+                      msg: "Products refreshed",
+                      backgroundColor: Colors.green,
+                    );
+                  },
+                  color: const Color(0xff0e63ff),
+                  strokeWidth: 2.5,
+                  displacement: 40,
+                  child: isProductLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : filteredProducts.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Lottie.asset(
                                     "assets/animations/no_data_found.json",
-                                    width: 200),
-                                const SizedBox(height: 10),
-                                const Text("No products found.",
-                                    style: TextStyle(color: Colors.grey)),
-                                const SizedBox(height: 20),
-                              ],
+                                    width: 200,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  const Text(
+                                    "No products found.",
+                                    style: TextStyle(color: Colors.grey),
+                                  ),
+                                  const SizedBox(height: 20),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              // ensures pull-to-refresh even with fewer items
+                              itemCount: getPaginatedProducts().length,
+                              itemBuilder: (context, index) {
+                                final product = getPaginatedProducts()[index];
+                                return buildTableRow(index, product);
+                              },
                             ),
-                          )
-                        : Builder(
-                            builder: (_) {
-                              final paginatedProducts = getPaginatedProducts();
-                              return ListView.builder(
-                                itemCount: paginatedProducts.length,
-                                itemBuilder: (context, index) => buildTableRow(
-                                    index, paginatedProducts[index]),
-                              );
-                            },
-                          ),
+                ),
               ),
-              buildProductPagination()
+
+              // Pagination
+              buildProductPagination(),
             ],
           ),
         ),
@@ -559,46 +586,67 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget buildProductPagination() {
-    // Only show pagination if we actually have products
-    if (filteredProducts.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    if (filteredProducts.isEmpty) return const SizedBox.shrink();
 
-    // Calculate total pages based on product list size
     final int totalProducts = filteredProducts.length;
     final int productsPerPage = 10;
     final int calculatedTotalPages = (totalProducts / productsPerPage).ceil();
     final int totalPages =
         _hasMoreProduct ? calculatedTotalPages : _currentProductPage + 1;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: List.generate(totalPages, (index) {
-          final isSelected = index == _currentProductPage;
-          return GestureDetector(
-            onTap: () {
-              setState(() {
-                _currentProductPage = index;
-              });
-            },
-            child: Container(
-              width: 40,
-              height: 40,
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              alignment: Alignment.center,
-              child: Text(
-                '${index + 1}',
-                style: TextStyle(
-                  color: const Color(0xff262A88),
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: isSelected ? 18 : 14,
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isSmallScreen = screenWidth < 400;
+    final bool isTablet = screenWidth >= 600;
+
+    final double buttonSize = isSmallScreen
+        ? 26
+        : isTablet
+            ? 36
+            : 30;
+
+    final double fontSize = isSmallScreen
+        ? 13
+        : isTablet
+            ? 17
+            : 15;
+
+    return Align(
+      alignment: Alignment.bottomLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 8,
+          children: List.generate(totalPages, (index) {
+            final bool isSelected = index == _currentProductPage;
+
+            return InkWell(
+              onTap: () {
+                if (_currentProductPage != index) {
+                  setState(() {
+                    _currentProductPage = index;
+                  });
+                }
+              },
+              borderRadius: BorderRadius.circular(6),
+              splashColor: Colors.grey.shade300,
+              child: Container(
+                width: buttonSize,
+                height: buttonSize,
+                alignment: Alignment.center,
+                child: Text(
+                  '${index + 1}',
+                  style: TextStyle(
+                    color: const Color(0xff0e63ff),
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: fontSize,
+                  ),
                 ),
               ),
-            ),
-          );
-        }),
+            );
+          }),
+        ),
       ),
     );
   }
@@ -734,14 +782,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ),
                       ),
                       onPressed: () async {
-                        // Show loading indicator
                         setState(() {
                           _isUpdating = true;
                         });
 
                         try {
-                          // Parse serialNo as int
-                          // Parse serialNo from string to int
                           int? serialNo;
                           if (_selectedProductForEdit != null &&
                               _selectedProductForEdit?['serialNo'] != null) {
@@ -750,7 +795,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                     .toString());
                           }
 
-                          // Create request model
                           final requestModel = ProductUpdateRequestModel(
                             serialNo: serialNo,
                             medicineName: _medicineNameEditController.text,
@@ -759,50 +803,41 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             indication: _indicationsEditController.text,
                           );
 
-                          // Call API service
                           final response =
                               await _apiService.updateProduct(requestModel);
 
                           if (response != null) {
-                            // Success - update local data
+                            final updatedModel = response.toListingModel();
+
                             setState(() {
-                              // Find the product in the list and update it
+                              // Update in main list
                               final index = products.indexWhere(
                                   (p) => p.serialNo == response.serialNo);
                               if (index != -1) {
-                                // Create a new ProductListingResponseModel from response
-                                products[index] = ProductListingResponseModel(
-                                  serialNo: response.serialNo,
-                                  medicineName: response.medicineName,
-                                  genericName: response.genericName,
-                                  // manufacturedBy: response.manufacturedBy,
-                                  // indication: response.indication,
-                                  // createdDatetime: response.createdDatetime,
-                                  // updatedDatetime: response.updatedDatetime,
-                                );
-
-                                // Also update filtered products if needed
-                                final filteredIndex =
-                                    filteredProducts.indexWhere(
-                                        (p) => p.serialNo == response.serialNo);
-                                if (filteredIndex != -1) {
-                                  filteredProducts[filteredIndex] = products[
-                                      index]; // Use the same updated object
-                                }
+                                products[index] = updatedModel;
                               }
+
+                              // Update in filtered list
+                              final filteredIndex = filteredProducts.indexWhere(
+                                  (p) => p.serialNo == response.serialNo);
+                              if (filteredIndex != -1) {
+                                filteredProducts[filteredIndex] = updatedModel;
+                              }
+
+                              // ✅ Clear all controllers
+                              _medicineNameEditController.clear();
+                              _genericNameEditController.clear();
+                              _manufacturerEditController.clear();
+                              _indicationsEditController.clear();
 
                               _isEditingProduct = false;
                               _selectedProductForEdit = null;
                               _isUpdating = false;
                             });
 
-                            // Refresh product list to ensure data is up to date
-                            loadProducts();
-
                             _showToast("Product updated successfully",
                                 isError: false);
                           } else {
-                            // Handle error
                             setState(() {
                               _isUpdating = false;
                             });
@@ -810,7 +845,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                 isError: true);
                           }
                         } catch (e) {
-                          // Handle exception
                           setState(() {
                             _isUpdating = false;
                           });
@@ -879,26 +913,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
 
     if (products.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Lottie.asset(
-              "assets/animations/no_data_found.json",
-              width: 250,
-              height: 250,
-              fit: BoxFit.contain,
+      Column(
+        children: [
+          Lottie.asset(
+            "assets/animations/no_data_found.json",
+            width: 250,
+            height: 250,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No ${selectedStatus.toLowerCase()} products found',
+            style: const TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
             ),
-            const SizedBox(height: 16),
-            Text(
-              'No ${selectedStatus.toLowerCase()} users found',
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 20),
+        ],
       );
     }
 
@@ -1009,6 +1041,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           return;
                         }
 
+                        // 🔍 Check if product already exists in local list
+                        final isDuplicate = products.any((product) =>
+                            product.medicineName?.toLowerCase() ==
+                                medicineName.toLowerCase() &&
+                            product.genericName?.toLowerCase() ==
+                                genericName.toLowerCase() &&
+                            product.manufacturedBy?.toLowerCase() ==
+                                manufacturedBy.toLowerCase() &&
+                            product.indication?.toLowerCase() ==
+                                indication.toLowerCase());
+
+                        if (isDuplicate) {
+                          _showToast("Product already exists!", isError: true);
+                          return;
+                        }
+
                         final requestModel = AddProductRequestModel(
                           medicineName: medicineName,
                           genericName: genericName,
@@ -1024,27 +1072,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           requestModel: requestModel,
                         );
 
-                        // Add debugging to see what you're getting back
-                        debugPrint("API response: $result");
-
-                        // Make sure you're checking the correct fields in your API response
                         if (result != null && result['success'] == true) {
                           _showToast("Product added successfully!",
                               isError: false);
+
+                          // ✅ Clear text fields after successful add
+                          _medicineNameAddController.clear();
+                          _genericNameAddController.clear();
+                          _manufacturerAddController.clear();
+                          _indicationsAddController.clear();
+
                           setState(() {
                             _isAddingProduct = false;
                           });
-                          await loadProducts();
+
+                          await loadProducts(); // Refresh product list
                         } else {
-                          String errorMsg = "";
-                          if (result != null && result.containsKey('message')) {
-                            errorMsg = result['message'];
-                          }
+                          String errorMsg =
+                              result?['message'] ?? 'Failed to add product';
                           _showToast(errorMsg, isError: true);
                         }
-                        setState(() {
-                          _isAddingProduct = false;
-                        });
                       },
                       child: const Text("Add",
                           style: TextStyle(color: Colors.white)),
@@ -1054,7 +1101,62 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     const SizedBox(height: 12),
                     ElevatedButton(
                       onPressed: () {
-                        _showToast("Bulk upload triggered", isError: false);
+                        showDialog(
+                          context: context,
+                          builder: (_) => BulkUploadWidget(
+                              onFileSelected: (file) async {
+                                _showToast("Processing file...", isError: false);
+
+                                final bytes = file.readAsBytesSync();
+                                final ex.Excel excel = ex.Excel.decodeBytes(bytes);
+                                List<Map<String, String>> productsToUpload = [];
+
+                                for (var table in excel.tables.keys) {
+                                  final sheet = excel.tables[table];
+
+                                  if (sheet == null) continue;
+
+                                  for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
+                                    final row = sheet.rows[rowIndex];
+
+                                    final medicineName = row[0]?.value.toString().trim() ?? '';
+                                    final genericName = row[1]?.value.toString().trim() ?? '';
+                                    final manufacturedBy = row[2]?.value.toString().trim() ?? '';
+                                    final indication = row[3]?.value.toString().trim() ?? '';
+
+                                    if ([medicineName, genericName, manufacturedBy, indication].any((e) => e.isEmpty)) {
+                                      continue; // skip invalid rows
+                                    }
+
+                                    final exists = products.any((product) =>
+                                    product.medicineName?.toLowerCase() == medicineName.toLowerCase() &&
+                                        product.genericName?.toLowerCase() == genericName.toLowerCase() &&
+                                        product.manufacturedBy?.toLowerCase() == manufacturedBy.toLowerCase() &&
+                                        product.indication?.toLowerCase() == indication.toLowerCase()
+                                    );
+
+                                    if (!exists) {
+                                      productsToUpload.add({
+                                        "medicineName": medicineName,
+                                        "genericName": genericName,
+                                        "manufacturedBy": manufacturedBy,
+                                        "indication": indication,
+                                      });
+                                    }
+                                  }
+                                }
+
+                                if (productsToUpload.isEmpty) {
+                                  _showToast("No new products to upload. All entries are duplicates.", isError: true);
+                                  return;
+                                }
+
+                                final response = await _apiService.uploadBulkProductList(productsToUpload);
+                                _showToast(response ?? "Bulk upload completed.");
+                                await loadProducts();
+                              }
+                          ),
+                        );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green.shade700,
@@ -1214,15 +1316,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     _selectedProductForEdit = {
                       'serialNo': product.serialNo?.toString() ?? '',
                       'medicineName': product.medicineName ?? '',
-                      'genericName': product.genericName ?? ''
+                      'genericName': product.genericName ?? '',
+                      'manufacturedBy': product.manufacturedBy ?? '',
+                      'indication': product.indication ?? ''
                     };
                     _isEditingProduct = true;
                     // Pre-fill controllers
                     _medicineNameEditController.text =
                         product.medicineName ?? '';
                     _genericNameEditController.text = product.genericName ?? '';
-                    _manufacturerEditController.text = 'Manufactured By 1';
-                    _indicationsEditController.text = 'Indications 1';
+                    _manufacturerEditController.text =
+                        product.manufacturedBy ?? '';
+                    _indicationsEditController.text = product.indication ?? '';
                   });
                 },
                 child: Container(
@@ -1311,7 +1416,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       // Logout logic
                       _showLogoutDialog();
                     },
-                    icon: const Icon(Icons.power_settings_new,color: Colors.white,size: 24,),
+                    icon: const Icon(
+                      Icons.power_settings_new,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                     label: const Text('Logout'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xff262A88),
@@ -1925,41 +2034,54 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildStatusDropdown() {
-    return DropdownButton<String>(
-      value: selectedStatus,
-      underline: Container(),
-      icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xff0e63ff)),
-      onChanged: (String? newValue) {
-        if (newValue != null) {
-          setState(() {
-            selectedStatus = newValue;
-            _currentPage = 0;
-            _hasMore = true;
-          });
-          _fetchUsers();
-        }
-      },
-      items: <String>['Pending', 'Approved', 'Rejected'].map((String value) {
-        return DropdownMenuItem<String>(
-          value: value,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            width: 100,
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: Color(0xff0e63ff), // light grey border like the image
-                  width: 0.5,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(
+            color: Color(0xff0e63ff), style: BorderStyle.none, width: 0.3),
+        borderRadius: BorderRadius.all(Radius.zero),
+        shape: BoxShape.rectangle,
+      ),
+      child: DropdownButton<String>(
+        value: selectedStatus,
+        underline: Container(),
+        icon: const Icon(
+          Icons.keyboard_arrow_down,
+          color: Color(0xff0e63ff),
+        ),
+        onChanged: (String? newValue) {
+          if (newValue != null) {
+            setState(() {
+              selectedStatus = newValue;
+              _currentPage = 0;
+              _hasMore = true;
+            });
+            _fetchUsers();
+          }
+        },
+        items: <String>['Pending', 'Approved', 'Rejected'].map((String value) {
+          return DropdownMenuItem<String>(
+            value: value,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              width: 100,
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Color(0xff0e63ff),
+                    // light grey border like the image
+                    width: 0.3,
+                  ),
                 ),
               ),
+              child: Text(
+                value,
+                style: const TextStyle(fontSize: 16),
+              ),
             ),
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 16),
-            ),
-          ),
-        );
-      }).toList(),
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -1972,36 +2094,57 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget buildPagination() {
-    // Dynamically calculate total pages based on _hasMore flag
-    final int totalPages = _hasMore ? 5 : _currentPage + 1;
+    if (_usersList.isEmpty) return const SizedBox.shrink();
+
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isSmallScreen = screenWidth < 400;
+    final bool isTablet = screenWidth >= 600;
+
+    final double buttonSize = isSmallScreen
+        ? 26
+        : isTablet
+            ? 36
+            : 30;
+
+    final double fontSize = isSmallScreen
+        ? 13
+        : isTablet
+            ? 17
+            : 15;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        alignment: WrapAlignment.start, // 👈 ensures left alignment
+        spacing: 6,
+        runSpacing: 8,
         children: List.generate(totalPages, (index) {
           final pageNumber = index + 1;
-          final isSelected = index == _currentPage;
+          final bool isSelected = index == _currentPage;
 
-          return GestureDetector(
+          return InkWell(
             onTap: () {
-              setState(() {
-                _currentPage = index;
-                _fetchUsers();
-              });
+              if (_currentPage != index) {
+                setState(() {
+                  _currentPage = index;
+                  _fetchUsers();
+                });
+              }
             },
+            borderRadius: BorderRadius.circular(6),
+            splashColor: Colors.grey.shade300,
             child: Container(
-              width: 40,
-              height: 40,
-              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: buttonSize,
+              height: buttonSize,
               alignment: Alignment.center,
               child: Text(
                 '$pageNumber',
                 style: TextStyle(
-                    color: const Color(0xff262A88),
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
-                    fontSize: isSelected ? 18 : 14),
+                  color: const Color(0xff0e63ff),
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  fontSize: fontSize,
+                ),
               ),
             ),
           );
@@ -2009,6 +2152,81 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
     );
   }
+
+  ///More pagination listing
+  /*Widget buildPagination() {
+    // Dynamically calculate total pages based on hasMore flag
+    final int totalPages = _hasMore ? 5 : currentPage + 1;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      height: 60, // Fixed height for the pagination container
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            // Previous page button
+            if (currentPage > 0)
+              _buildPageButton(
+                icon: Icons.chevron_left,
+                onTap: () {
+                  setState(() {
+                    currentPage = currentPage - 1;
+                    _fetchUsers();
+                  });
+                },
+              ),
+
+            // Numbered page buttons
+            ...List.generate(totalPages, (index) {
+              final pageNumber = index + 1;
+              final isSelected = index == currentPage;
+
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    currentPage = index;
+                    _fetchUsers();
+                  });
+                },
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFFE6E6FF) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '$pageNumber',
+                    style: TextStyle(
+                      color: const Color(0xff262A88),
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: isSelected ? 18 : 14,
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+            // Next page button
+            if (_hasMore)
+              _buildPageButton(
+                icon: Icons.chevron_right,
+                onTap: () {
+                  setState(() {
+                    currentPage = currentPage + 1;
+                    _fetchUsers();
+                  });
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }*/
 
   @override
   void dispose() {
@@ -2023,5 +2241,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
     _manufacturerAddController.dispose();
     _indicationsAddController.dispose();
     super.dispose();
+  }
+}
+
+extension ProductUpdateMapper on ProductUpdateResponseModel {
+  ProductListingResponseModel toListingModel() {
+    return ProductListingResponseModel(
+      serialNo: serialNo,
+      medicineName: medicineName,
+      genericName: genericName,
+      manufacturedBy: manufacturedBy,
+      indication: indication,
+      createdDatetime: createdDatetime,
+      updatedDatetime: updatedDatetime,
+    );
   }
 }

@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:http/http.dart' as http;
+import 'package:pharma_five/service/api_service.dart';
 import 'login_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -19,12 +22,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   bool _isSubmitting = false;
   bool _isOtpSent = false;
-  int _remainingSeconds = 60;
-  Timer? _timer;
-
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
   bool _isOtpValid = false;
+  bool _canResend = false;
+
+  int _remainingSeconds = 60;
+  Timer? _timer;
+
+  final String verifyOTPAPI = '/reset-password';
 
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
@@ -35,54 +41,111 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  String _formatTime(int seconds) {
-    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
-    final secs = (seconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$secs';
-  }
-
-  void _startCountdownTimer() {
+  void _startResendTimer() {
     _remainingSeconds = 60;
+    _canResend = false;
+
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_remainingSeconds == 0) {
+      if (_remainingSeconds <= 1) {
         timer.cancel();
+        setState(() {
+          _canResend = true;
+        });
+      } else {
+        setState(() {
+          _remainingSeconds--;
+        });
       }
-      setState(() {
-        _remainingSeconds--;
-      });
     });
+  }
+
+  Future<Map<String, dynamic>?> _sendOTPApi({required String email}) async {
+    final url = Uri.parse('${ApiService().baseUrl}${ApiService().sendOTPAPI}');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({"email": email}),
+      );
+
+      final data = jsonDecode(response.body);
+      return {
+        'success': data['success'] ?? false,
+        'message': data['message'] ?? "OTP send failed.",
+      };
+    } catch (_) {
+      return {'success': false, 'message': "An error occurred. Please try again."};
+    }
   }
 
   Future<void> _sendOTP() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isSubmitting = true);
-      await Future.delayed(const Duration(seconds: 1)); // Simulated API
+      final email = _emailController.text.trim();
+      final result = await _sendOTPApi(email: email);
+      setState(() => _isSubmitting = false);
 
-      _showToast("OTP sent to ${_emailController.text.trim()}");
-      _otpController.clear();
-      _startCountdownTimer();
+      if (result?['success'] == true) {
+        _showToast(result!['message']);
+        _otpController.clear();
+        _startResendTimer();
 
-      setState(() {
-        _isSubmitting = false;
-        _isOtpSent = true;
-        _isOtpValid = false;
-      });
+        setState(() {
+          _isOtpSent = true;
+          _isOtpValid = false;
+        });
+      } else {
+        _showToast(result?['message'] ?? "Failed to send OTP", isError: true);
+      }
     }
   }
 
   Future<void> _verifyOTP() async {
-    if (_formKey.currentState!.validate()) {
-      if (_otpController.text.length != 6) {
-        _showToast("Enter a valid 6-digit OTP", isError: true);
-        return;
-      }
-
+    if (_formKey.currentState!.validate() && _otpController.text.length == 6) {
       setState(() => _isSubmitting = true);
-      await Future.delayed(const Duration(seconds: 2)); // Simulated API
+      final result = await _verifyOTPApi(
+        email: _emailController.text.trim(),
+        otp: _otpController.text.trim(),
+        newPassword: _newPasswordController.text.trim(),
+      );
+      setState(() => _isSubmitting = false);
 
-      _showToast("Password reset successful");
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+      if (result?['success'] == true) {
+        _showToast(result!['message']);
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+      } else {
+        _showToast(result?['message'] ?? "Verification failed", isError: true);
+      }
+    } else {
+      _showToast("Enter a valid 6-digit OTP", isError: true);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _verifyOTPApi({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    final url = Uri.parse('${ApiService().baseUrl}$verifyOTPAPI');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "email": email,
+          "otp": otp,
+          "newPassword": newPassword,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      return {
+        'success': data['success'] ?? false,
+        'message': data['message'] ?? "Password reset failed.",
+      };
+    } catch (_) {
+      return {'success': false, 'message': "An error occurred. Please try again."};
     }
   }
 
@@ -98,6 +161,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isFieldDisabled = _isOtpSent;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -107,66 +172,24 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             key: _formKey,
             child: Column(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    InkWell(
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: const Color(0xff0e63ff),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFF9ABEE3), width: 2),
-                        ),
-                        child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
-                      ),
-                    ),
-                    Image.asset(
-                      'assets/images/pharmafive_512x512.png',
-                      width: 80,
-                      height: 80,
-                      errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.medical_services_outlined, color: Colors.blue, size: 30),
-                    ),
-                  ],
-                ),
+                _buildHeader(),
                 const SizedBox(height: 20),
-                const Text('Reset Your Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 6),
-                const Text('A 6-digit OTP will be sent to your email',
-                    style: TextStyle(fontSize: 14, color: Colors.black54)),
+                _buildTitle(),
                 const SizedBox(height: 20),
-
-                _buildTextField("Email", _emailController, TextInputType.emailAddress, (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Email is required';
-                  }
-                  return null;
-                }),
-
-                _buildPasswordField(
-                  "New Password",
-                  _newPasswordController,
-                  _obscureNewPassword,
-                      () => setState(() => _obscureNewPassword = !_obscureNewPassword),
-                      (val) => val == null || val.length < 8 ? 'Minimum 8 characters' : null,
+                _buildTextField("Email", _emailController, TextInputType.emailAddress,
+                      (value) {
+                    if (value == null || value.trim().isEmpty) return 'Email is required';
+                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) return 'Enter a valid email';
+                    return null;
+                  },
+                  enabled: !isFieldDisabled,
                 ),
-
-                _buildPasswordField(
-                  "Confirm Password",
-                  _confirmPasswordController,
-                  _obscureConfirmPassword,
-                      () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
-                      (val) => val != _newPasswordController.text ? "Passwords don't match" : null,
-                ),
+                _buildPasswordField("New Password", _newPasswordController, _obscureNewPassword, () {
+                  setState(() => _obscureNewPassword = !_obscureNewPassword);
+                }, (val) => val == null || val.length < 8 ? 'Minimum 8 characters' : null, enabled: !isFieldDisabled),
+                _buildPasswordField("Confirm Password", _confirmPasswordController, _obscureConfirmPassword, () {
+                  setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
+                }, (val) => val != _newPasswordController.text ? "Passwords don't match" : null, enabled: !isFieldDisabled),
 
                 if (_isOtpSent)
                   Padding(
@@ -175,6 +198,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       controller: _otpController,
                       keyboardType: TextInputType.number,
                       maxLength: 6,
+                      enabled: true,
                       textAlign: TextAlign.center,
                       decoration: InputDecoration(
                         labelText: "Enter OTP",
@@ -189,25 +213,42 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         ),
                       ),
                       onChanged: (value) {
-                        setState(() {
-                          _isOtpValid = value.trim().length == 6;
-                        });
-                      },
-                      validator: (value) {
-                        if (value == null || value.length != 6) {
-                          return "Please enter 6-digit OTP";
-                        }
-                        return null;
+                        setState(() => _isOtpValid = value.trim().length == 6);
                       },
                     ),
                   ),
 
-                const SizedBox(height: 16),
+                if (_isOtpSent && !_canResend)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Resend in: $_remainingSeconds sec',
+                        style: const TextStyle(color: Colors.redAccent, fontSize: 14),
+                      ),
+                    ),
+                  ),
 
-                if (_isOtpSent && _remainingSeconds > 0)
-                  Text(
-                    'Time remaining: ${_formatTime(_remainingSeconds)}',
-                    style: const TextStyle(color: Colors.redAccent, fontSize: 14),
+                if (_isOtpSent && _canResend)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: _sendOTP,
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Resend OTP',
+                        style: TextStyle(
+                          color: Color(0xff0e63ff),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   ),
 
                 const SizedBox(height: 16),
@@ -233,12 +274,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         : Text(_isOtpSent ? "Verify OTP" : "Reset Password"),
                   ),
                 ),
-
-                if (_isOtpSent && _remainingSeconds <= 0)
-                  TextButton(
-                    onPressed: _sendOTP,
-                    child: const Text("Resend OTP", style: TextStyle(color: Color(0xff0e63ff))),
-                  ),
               ],
             ),
           ),
@@ -247,14 +282,55 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller,
-      TextInputType inputType, FormFieldValidator<String> validator) {
+  Widget _buildTitle() {
+    return const Column(
+      children: [
+        Text('Reset Your Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        SizedBox(height: 6),
+        Text('A 6-digit OTP will be sent to your email', style: TextStyle(fontSize: 14, color: Colors.black54)),
+      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        InkWell(
+          onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xff0e63ff),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFF9ABEE3), width: 2),
+            ),
+            child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+          ),
+        ),
+        Image.asset(
+          'assets/images/pharmafive_512x512.png',
+          width: 80,
+          height: 80,
+          errorBuilder: (_, __, ___) =>
+          const Icon(Icons.medical_services_outlined, color: Colors.blue, size: 30),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextField(String label, TextEditingController controller, TextInputType inputType,
+      FormFieldValidator<String> validator,
+      {bool enabled = true}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         controller: controller,
         keyboardType: inputType,
         validator: validator,
+        enabled: enabled,
         decoration: InputDecoration(
           labelText: label,
           filled: true,
@@ -274,14 +350,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       TextEditingController controller,
       bool obscureText,
       VoidCallback toggleVisibility,
-      FormFieldValidator<String> validator,
-      ) {
+      FormFieldValidator<String> validator, {
+        bool enabled = true,
+      }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         controller: controller,
         obscureText: obscureText,
         validator: validator,
+        enabled: enabled,
         decoration: InputDecoration(
           labelText: label,
           filled: true,

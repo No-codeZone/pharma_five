@@ -8,6 +8,7 @@ class SharedPreferenceHelper {
   static const String _userEmailKey = 'userEmail';
   static const String _userTypeKey = 'userType';
   static const String _userStatusKey = 'userStatus';
+  static const _keyInstallationId = 'installation_id';
 
   static SharedPreferences? _preferences;
 
@@ -123,17 +124,41 @@ class SharedPreferenceHelper {
     }
   }
 
+  static Future<void> setInstallationId(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyInstallationId, id);
+  }
+
+  static Future<String?> getInstallationId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyInstallationId);
+  }
+
   static Future<bool> clearSession() async {
     try {
       final prefs = await _getInstance();
+      // Keep installation ID when clearing session
       return await Future.wait([
         prefs.remove(_isLoggedInKey),
         prefs.remove(_userEmailKey),
         prefs.remove(_userTypeKey),
+        prefs.remove(_userStatusKey),
       ]).then((_) => true);
     } catch (e) {
       if (kDebugMode) {
         print('Error clearing session: $e');
+      }
+      return false;
+    }
+  }
+
+  static Future<bool> clearAll() async {
+    try {
+      final prefs = await _getInstance();
+      return await prefs.clear();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error clearing all preferences: $e');
       }
       return false;
     }

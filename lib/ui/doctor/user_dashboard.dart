@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:pharma_five/ui/login_screen.dart';
@@ -29,12 +31,30 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
   String _lastRefreshed = ''; // Track when status was last checked
   String _errorMessage = ''; // Store error messages from API calls
 
+  bool _isConnected = true;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _validateUserAndLoadData();
+    _updateInternetStatus();
   }
+
+  void _updateInternetStatus() async {
+    _isConnected = await _checkInternetConnectivity();
+    setState(() {}); // Trigger UI update
+  }
+
+  Future<bool> _checkInternetConnectivity() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
+    }
+  }
+
 
   Future<void> _validateUserAndLoadData() async {
     setState(() {
@@ -267,8 +287,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
               });
             },
             child: Container(
-              width: 40,
-              height: 40,
+              width: 30,
+              height: 30,
               margin: const EdgeInsets.symmetric(horizontal: 4),
               alignment: Alignment.center,
               child: Text(
@@ -633,6 +653,39 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
 
   // Extracted method for the ListView to use with RefreshIndicator
   Widget _buildProductListView(double horizontalPadding) {
+    if (!_isConnected) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Lottie.asset(
+              "assets/animations/internet.json",
+              width: 250,
+              height: 250,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No Internet Connection',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () {
+                _updateInternetStatus(); // Retry checking internet status
+                _loadProductData(); // Retry fetching users if internet is back
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(), // Important for pull to refresh to work even when content doesn't fill screen
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),

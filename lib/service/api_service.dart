@@ -13,6 +13,7 @@ import '../model/login_response_model.dart';
 import '../model/product_listing_response_model.dart';
 import '../model/product_update_request_model.dart';
 import '../model/product_update_response_model.dart';
+import 'package:http_parser/http_parser.dart';
 
 class ApiService {
   // Base URL for API endpoints
@@ -30,6 +31,7 @@ class ApiService {
   final String getProductListingAPI="/product/list";  //baseUrlProduct
   final String updateProductAPI="/product/update";    //baseUrlProduct
   final String addProductAPI="/product/add";   //baseUrlProduct
+  final String bulkProductAPI="/product/upload";   //baseUrlProduct
   final String sendOTPAPI="/send-otp";
   final String resetPasswordAPI="/reset-password";
 
@@ -270,7 +272,7 @@ class ApiService {
   ///Update product
   Future<ProductUpdateResponseModel?> updateProduct(ProductUpdateRequestModel requestModel) async {
     try {
-      final response = await http.post(
+      final response = await http.put(
         Uri.parse('$baseUrlProduct$updateProductAPI'),
         headers: <String, String>{
           'Content-Type': 'application/json; charset=UTF-8',
@@ -336,6 +338,29 @@ class ApiService {
       };
     }
   }
+
+  ///Bulk product upload
+  Future<String?> uploadBulkProductList(List<Map<String, String>> products) async {
+    final url = Uri.parse('$baseUrl/product/bulk-add'); // Adjust as per your endpoint
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(products),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['message'] ?? "Products uploaded successfully.";
+      } else {
+        return "Failed to upload products: ${response.body}";
+      }
+    } catch (e) {
+      return "Error uploading products: $e";
+    }
+  }
+
 
   // Helper method to map backend status to frontend display status
   String _mapStatusToFrontend(String backendStatus) {
