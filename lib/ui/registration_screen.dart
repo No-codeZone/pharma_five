@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:pharma_five/ui/login_screen.dart';
 import 'package:pharma_five/ui/walk_through_screen.dart';
 import '../service/api_service.dart';
+import 'package:http/http.dart' as http;
 import '../service/internet_connectivity_service.dart';
 
 class RegistrationScreen extends StatefulWidget {
@@ -31,6 +34,21 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   bool _isMobileValid = true;
   bool _isEmailValid = true;
   bool _isPasswordValid = true;
+  bool _wasDisconnected = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    hasRealInternetConnection().then((connected) {
+      if (!connected) {
+        _wasDisconnected = true;
+        _showToast("No internet connection", true);
+      }
+    });
+
+  }
+
 
   void _showToast(String message, bool isError) {
     Fluttertoast.showToast(
@@ -75,16 +93,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           : "Mobile number must be 10 digits";
     }
 
-    // final emailPattern = r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
-    // final isEmailValidRegex = RegExp(emailPattern).hasMatch(_emailController.text.trim());
-    //
-    // if (_emailController.text.trim().isEmpty || !isEmailValidRegex) {
-    //   _isEmailValid = false;
-    //   hasError = true;
-    //   _validationMessage = _emailController.text.trim().isEmpty
-    //       ? "Please enter email"
-    //       : "Enter a valid email address";
-    // }
+    /*final emailPattern = r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
+    final isEmailValidRegex = RegExp(emailPattern).hasMatch(_emailController.text.trim());
+
+    if (_emailController.text.trim().isEmpty || !isEmailValidRegex) {
+      _isEmailValid = false;
+      hasError = true;
+      _validationMessage = _emailController.text.trim().isEmpty
+          ? "Please enter email"
+          : "Enter a valid email address";
+    }*/
 
     if (_passwordController.text.trim().isEmpty || _passwordController.text.length < 8) {
       _isPasswordValid = false;
@@ -99,7 +117,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       return;
     }
 
-    final isConnected = await InternetConnectivityService().checkInternetConnectivity();
+    final isConnected = await InternetConnection().hasInternetAccess;
     if (!isConnected) {
       _showToast("No internet connection. Please check your connection and try again.", true);
       return;
@@ -152,7 +170,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         });
       } else {
         setState(() => _validationMessage = response['message']);
-        _showToast(response['message'], true);
+        _showToast(response['message'], false);
 
         debugPrint("Registration response is here===\t${response['message'].toString()}");
 
@@ -186,6 +204,30 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       _showToast("An unexpected error occurred.", true);
     }
   }
+
+  Future<bool> hasRealInternetConnection() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult == ConnectivityResult.none) return false;
+
+    try {
+      final result = await http.get(Uri.parse('https://www.google.com')).timeout(Duration(seconds: 3));
+      return result.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _handleConnectivityChange(ConnectivityResult result) async {
+    final connected = await hasRealInternetConnection();
+    if (!connected && !_wasDisconnected) {
+      _wasDisconnected = true;
+      _showToast("Internet disconnected", true);
+    } else if (connected && _wasDisconnected) {
+      _wasDisconnected = false;
+      _showToast("Internet connected", false);
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {

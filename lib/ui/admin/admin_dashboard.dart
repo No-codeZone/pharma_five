@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show InternetAddress, SocketException;
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_snake_navigationbar/flutter_snake_navigationbar.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -84,6 +86,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
 // Selected product for editing (as Map for compatibility with existing code)
   Map<String, String>? _selectedProductForEdit;
+  // late StreamSubscription _connectionSubscription;
+  bool _lastConnectionStatus = true; // Assume connected initially
+  late StreamSubscription<List<ConnectivityResult>> _connectionSubscription;
+
+
 
   @override
   void initState() {
@@ -91,12 +98,47 @@ class _AdminDashboardState extends State<AdminDashboard> {
     selectedStatus = 'Pending';
     _checkLoginStatus();
     _fetchUsers();
-    _updateInternetStatus();
+    _updateInternetStatus().then((connected) {
+      if (connected) {
+        loadProducts(); // only load if internet is available
+      }
+    });
+    _connectionSubscription = Connectivity().onConnectivityChanged.listen(
+          (List<ConnectivityResult> results) async {
+        final isNowConnected = results.contains(ConnectivityResult.mobile) ||
+            results.contains(ConnectivityResult.wifi) ||
+            results.contains(ConnectivityResult.ethernet);
+
+        if (_lastConnectionStatus != isNowConnected) {
+          _lastConnectionStatus = isNowConnected;
+
+          if (mounted) {
+            setState(() {
+              _isConnected = isNowConnected;
+            });
+
+            Fluttertoast.showToast(
+              msg: isNowConnected ? "Internet connected" : "Internet disconnected",
+              backgroundColor: isNowConnected ? Colors.green : Colors.red,
+              textColor: Colors.white,
+              gravity: ToastGravity.BOTTOM,
+              toastLength: Toast.LENGTH_SHORT,
+            );
+
+            if (isNowConnected) {
+              await loadProducts(); // Auto refresh on reconnect if needed
+            }
+          }
+        }
+      },
+    );
+
+
     _filteredProductList = List.from(_productList);
     // Set up the search controller listener
     _searchController.addListener(onSearchChanged);
     // Debug statement to confirm product list initialization
-    loadProducts();
+    // loadProducts();
   }
 
   Future<bool> _checkInternetConnectivity() async {
@@ -108,10 +150,32 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
-  void _updateInternetStatus() async {
-    _isConnected = await _checkInternetConnectivity();
-    setState(() {}); // Trigger UI update
+  Future<bool> _updateInternetStatus() async {
+    final wasConnected = _isConnected;
+    final bool isNowConnected = await _checkInternetConnectivity();
+
+    if (!mounted) return false;
+
+    setState(() {
+      _isConnected = isNowConnected;
+    });
+
+    if (_isConnected != wasConnected) {
+      final message = _isConnected ? "Internet connected" : "Internet disconnected";
+      final color = _isConnected ? Colors.green : Colors.red;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    return _isConnected;
   }
+
 
   ///excluding admin
   Future<void> _fetchUsers() async {
@@ -408,6 +472,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
             ),
             child: SnakeNavigationBar.color(
+              padding: EdgeInsets.zero,
               behaviour: SnakeBarBehaviour.floating,
               snakeShape: SnakeShape.circle,
               shape: RoundedRectangleBorder(
@@ -426,25 +491,56 @@ class _AdminDashboardState extends State<AdminDashboard> {
               },
               items: [
                 BottomNavigationBarItem(
-                  icon: _selectedItemPosition == 0
-                      ? Image.asset("assets/images/user_lists.png",
-                          height: 16, width: 16)
-                      : Image.asset("assets/images/user_list2.png",
-                          height: 26, width: 26),
+                  icon: Padding(
+                    padding: const EdgeInsets.only(left: 3.0),
+                    child: SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: Image.asset(
+                        _selectedItemPosition == 0
+                            ? "assets/images/user_lists.png"
+                            : "assets/images/user_list2.png",
+                        // height: 20,
+                        // width: 20,
+                        alignment: Alignment.center,
+                          fit: BoxFit.contain
+                      ),
+                    ),
+                  ),
                 ),
                 BottomNavigationBarItem(
-                  icon: _selectedItemPosition == 1
-                      ? Image.asset("assets/images/product_list.png",
-                          height: 16, width: 16)
-                      : Image.asset("assets/images/product_list2.png",
-                          height: 26, width: 26),
+                  icon: Padding(
+                    padding: const EdgeInsets.only(left: 3.0),
+                    child: SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: Image.asset(
+                        _selectedItemPosition == 1
+                            ? "assets/images/product_list.png"
+                            : "assets/images/product_list2.png",
+                        // height: 20,
+                        // width: 20,
+                        alignment: Alignment.center,
+                          fit: BoxFit.contain
+                      ),
+                    ),
+                  ),
                 ),
                 BottomNavigationBarItem(
-                  icon: _selectedItemPosition == 2
-                      ? Image.asset("assets/images/reports.png",
-                          height: 16, width: 16)
-                      : Image.asset("assets/images/report2.png",
-                          height: 26, width: 26),
+                  icon: Padding(
+                    padding: const EdgeInsets.only(left: 5.0),
+                    child: SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: Image.asset(
+                        _selectedItemPosition == 2
+                            ? "assets/images/reports.png"
+                            : "assets/images/report2.png",
+                        fit: BoxFit.contain,
+                        alignment: Alignment.center,
+                      ),
+                    ),
+                  ),
                 ),
               ],
               selectedLabelStyle: TextStyle(fontSize: titleFontSize - 2),
@@ -546,33 +642,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   displacement: 40,
                   child: isProductLoading
                       ? const Center(child: CircularProgressIndicator())
+                      : !_isConnected
+                      ?
+                  _buildNoInternetWidget()
                       : filteredProducts.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Lottie.asset(
-                                    "assets/animations/no_data_found.json",
-                                    width: 200,
-                                  ),
-                                  const SizedBox(height: 10),
-                                  const Text(
-                                    "No products found.",
-                                    style: TextStyle(color: Colors.grey),
-                                  ),
-                                  const SizedBox(height: 20),
-                                ],
-                              ),
-                            )
-                          : ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              // ensures pull-to-refresh even with fewer items
-                              itemCount: getPaginatedProducts().length,
-                              itemBuilder: (context, index) {
-                                final product = getPaginatedProducts()[index];
-                                return buildTableRow(index, product);
-                              },
-                            ),
+                      ? _buildNoDataWidget()
+                      : _buildProductList()
                 ),
               ),
 
@@ -584,6 +659,70 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
     );
   }
+
+  Widget _buildProductList(){
+    return ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+    itemCount: getPaginatedProducts().length,
+    itemBuilder: (context, index) {
+    final product = getPaginatedProducts()[index];
+    return buildTableRow(index, product);
+    }
+    );
+  }
+
+  Widget _buildNoDataWidget(){
+    return Center(
+        child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+        Lottie.asset(
+        "assets/animations/no_data_found.json",
+        width: 200,
+    ),
+    const SizedBox(height: 10),
+    const Text(
+    "No products found.",
+    style: TextStyle(color: Colors.grey),
+    ),
+    const SizedBox(height: 20),
+    ],
+    ));
+  }
+
+  Widget _buildNoInternetWidget() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Lottie.asset(
+            "assets/animations/internet.json",
+            width: 250,
+            height: 250,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No Internet Connection',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+          ),
+          /*const SizedBox(height: 8),
+          IconButton(
+            onPressed: () async {
+              final connected = await _updateInternetStatus();
+              if (connected) await loadProducts();
+            },
+            icon: Icon(Icons.refresh,color: Color(0xff0e63ff), size: 40,),
+          ),*/
+        ],
+      ),
+    );
+  }
+
 
   Widget buildProductPagination() {
     if (filteredProducts.isEmpty) return const SizedBox.shrink();
@@ -885,14 +1024,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 color: Colors.grey,
               ),
             ),
-            const SizedBox(height: 8),
-            ElevatedButton(
+            /*const SizedBox(height: 8),
+            IconButton(
               onPressed: () {
                 _updateInternetStatus(); // Retry checking internet status
                 _fetchUsers(); // Retry fetching users if internet is back
               },
-              child: const Text('Retry'),
-            ),
+              icon: Icon(Icons.refresh, color: Color(0xff0e63ff), size: 40,),
+            ),*/
           ],
         ),
       );
@@ -1105,55 +1244,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           context: context,
                           builder: (_) => BulkUploadWidget(
                               onFileSelected: (file) async {
-                                _showToast("Processing file...", isError: false);
+                                _showToast("Uploading Excel file...", isError: false);
 
-                                final bytes = file.readAsBytesSync();
-                                final ex.Excel excel = ex.Excel.decodeBytes(bytes);
-                                List<Map<String, String>> productsToUpload = [];
+                                final response = await _apiService.uploadBulkProductList(file);
 
-                                for (var table in excel.tables.keys) {
-                                  final sheet = excel.tables[table];
-
-                                  if (sheet == null) continue;
-
-                                  for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
-                                    final row = sheet.rows[rowIndex];
-
-                                    final medicineName = row[0]?.value.toString().trim() ?? '';
-                                    final genericName = row[1]?.value.toString().trim() ?? '';
-                                    final manufacturedBy = row[2]?.value.toString().trim() ?? '';
-                                    final indication = row[3]?.value.toString().trim() ?? '';
-
-                                    if ([medicineName, genericName, manufacturedBy, indication].any((e) => e.isEmpty)) {
-                                      continue; // skip invalid rows
-                                    }
-
-                                    final exists = products.any((product) =>
-                                    product.medicineName?.toLowerCase() == medicineName.toLowerCase() &&
-                                        product.genericName?.toLowerCase() == genericName.toLowerCase() &&
-                                        product.manufacturedBy?.toLowerCase() == manufacturedBy.toLowerCase() &&
-                                        product.indication?.toLowerCase() == indication.toLowerCase()
-                                    );
-
-                                    if (!exists) {
-                                      productsToUpload.add({
-                                        "medicineName": medicineName,
-                                        "genericName": genericName,
-                                        "manufacturedBy": manufacturedBy,
-                                        "indication": indication,
-                                      });
-                                    }
-                                  }
-                                }
-
-                                if (productsToUpload.isEmpty) {
-                                  _showToast("No new products to upload. All entries are duplicates.", isError: true);
-                                  return;
-                                }
-
-                                final response = await _apiService.uploadBulkProductList(productsToUpload);
                                 _showToast(response ?? "Bulk upload completed.");
-                                await loadProducts();
+                                await Future.delayed(const Duration(seconds: 2));
+                                try {
+                                  await loadProducts();
+                                } catch (e) {
+                                  debugPrint("Error while loading products: $e");
+                                  _showToast("Products uploaded, but failed to refresh list.", isError: true);
+                                }
                               }
                           ),
                         );
@@ -1617,14 +1719,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 color: Colors.grey,
               ),
             ),
-            const SizedBox(height: 8),
-            ElevatedButton(
+            /*const SizedBox(height: 8),
+            IconButton(
               onPressed: () {
                 _updateInternetStatus(); // Retry checking internet status
                 _fetchUsers(); // Retry fetching users if internet is back
               },
-              child: const Text('Retry'),
-            ),
+              icon: const Icon(Icons.refresh, color: Color(0xff0e63ff),size:40),
+            ),*/
           ],
         ),
       );
@@ -2230,6 +2332,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   void dispose() {
+    _connectionSubscription.cancel();
     _searchController.dispose();
     _focusNode.dispose();
     _medicineNameEditController.dispose();

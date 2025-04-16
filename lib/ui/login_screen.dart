@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:pharma_five/ui/admin/admin_dashboard.dart';
 import 'package:pharma_five/ui/forgot_password_screen.dart';
 import 'package:pharma_five/ui/registration_screen.dart';
@@ -24,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _wasDisconnected = false;
 
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
@@ -41,6 +43,25 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _checkAndClearSession();
+    // Check initial connectivity status but don't show toast for initial connected state
+    InternetConnection().hasInternetAccess.then((connected) {
+      if (!connected) {
+        _wasDisconnected = true;
+        _showToast("No internet connection", isError: true);
+      }
+    });
+
+    // Listen for internet connectivity changes
+    InternetConnection().onStatusChange.listen((status) {
+      if (status == InternetStatus.disconnected) {
+        _wasDisconnected = true;
+        _showToast("Internet disconnected", isError: true);
+      } else if (_wasDisconnected) {
+        // Only show the "connected" toast if previously disconnected
+        _wasDisconnected = false;
+        _showToast("Internet connected");
+      }
+    });
   }
 
   Future<void> _checkAndClearSession() async {
@@ -54,128 +75,14 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /*void _validateForm() async {
-    try {
-      await SharedPreferenceHelper.init();
-
-      if (_formKey.currentState!.validate()) {
-        setState(() => _isLoading = true);
-
-        // Try admin login first
-        bool adminSuccess = await ApiService().adminLogin(
-          email: _emailController.text,
-          password: _passwordController.text,
-        );
-
-        if (adminSuccess) {
-          await SharedPreferenceHelper.setLoggedIn(true);
-          await SharedPreferenceHelper.setUserEmail(_emailController.text);
-          await SharedPreferenceHelper.setUserType('admin');
-
-          _showToast("Admin Login successful!");
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => AdminDashboard()),
-          );
-          return;
-        }
-
-        // Try user login next
-        bool userSuccess = await ApiService().userLogin(
-          email: _emailController.text,
-          password: _passwordController.text,
-        );
-
-        if (userSuccess) {
-          await SharedPreferenceHelper.setLoggedIn(true);
-          await SharedPreferenceHelper.setUserEmail(_emailController.text);
-          await SharedPreferenceHelper.setUserType('user'); // set default role
-
-          _showToast("User Login successful!");
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => UserDashboard()),
-          );
-          return;
-        }
-
-        _showToast("Invalid credentials. Please try again.", isError: true);
-      }
-    } catch (e) {
-      _showToast("Login failed. Please try again.", isError: true);
-      print('Login error: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }*/
-
-  /*Future<void> _validateForm() async {
-    try {
-      await SharedPreferenceHelper.init();
-
-      if (_formKey.currentState!.validate()) {
-        setState(() => _isLoading = true);
-
-        final email = _emailController.text.trim();
-        final loginResult = await ApiService().userLogin(
-          email: email,
-          password: _passwordController.text,
-        );
-
-        if (loginResult != null && loginResult['success'] == true) {
-          final data = loginResult['data'];
-          final status = data['status'].toString().toLowerCase();  // e.g., active/pending/rejected
-          final role = data['role'].toString().toLowerCase();      // e.g., admin/user
-
-          // Save session info
-          await SharedPreferenceHelper.setLoggedIn(true);
-          await SharedPreferenceHelper.setUserEmail(email);
-          await SharedPreferenceHelper.setUserType(role);
-          await SharedPreferenceHelper.setUserStatus(status);
-
-          _showToast("${role[0].toUpperCase()}${role.substring(1)} login successful!");
-
-          // ✅ Navigate based on role & status
-          if (role == 'admin') {
-            debugPrint("Admin user found");
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const AdminDashboard()),
-            );
-          } else if (status == 'active') {
-            debugPrint("Active user found");
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
-            );
-          } *//*else if(status == 'reject' || status == 'pending'){
-            debugPrint("Pending & Rejected user found 1");
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
-            );*//*
-          // }
-        } else {
-          final message = loginResult?['message'] ?? "Login failed.";
-          debugPrint("Pending & Rejected user found 2");
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
-          );
-          _showToast(message, isError: true);
-        }
-      }
-    } catch (e) {
-      _showToast("Login failed. Please try again.", isError: true);
-      debugPrint('Login error: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }*/
-
-
   Future<void> _validateForm() async {
     try {
+      final isConnected = await InternetConnection().hasInternetAccess;
+      if (!isConnected) {
+        _showToast("No internet connection. Please check your connection and try again.", isError: true);
+        return;
+      }
+
       await SharedPreferenceHelper.init();
 
       if (_formKey.currentState!.validate()) {
@@ -198,10 +105,6 @@ class _LoginScreenState extends State<LoginScreen> {
         await SharedPreferenceHelper.setUserStatus(status);
 
         if (success && data != null) {
-          /*await SharedPreferenceHelper.setLoggedIn(true);
-          await SharedPreferenceHelper.setUserEmail(email);
-          await SharedPreferenceHelper.setUserType(role);
-          await SharedPreferenceHelper.setUserStatus(status);*/
 
           _showToast("${role[0].toUpperCase()}${role.substring(1)} login successful!");
 
@@ -218,10 +121,6 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         } else if (!success &&
             (message.contains("Account is not ACTIVE. Current status: Pending") || message.contains("Account is not ACTIVE. Current status: Reject"))) {
-          // await SharedPreferenceHelper.setLoggedIn(true);
-          // await SharedPreferenceHelper.setUserEmail(email);
-          // await SharedPreferenceHelper.setUserType(role);
-          // await SharedPreferenceHelper.setUserStatus(status);
 
           Navigator.pushReplacement(
             context,

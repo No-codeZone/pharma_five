@@ -340,19 +340,28 @@ class ApiService {
   }
 
   ///Bulk product upload
-  Future<String?> uploadBulkProductList(List<Map<String, String>> products) async {
-    final url = Uri.parse('$baseUrl/product/bulk-add'); // Adjust as per your endpoint
+  Future<String?> uploadBulkProductList(File excelFile) async {
+    final url = Uri.parse('$baseUrlProduct$bulkProductAPI'); // e.g., http://.../api/product/upload
 
     try {
-      final response = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(products),
-      );
+      final request = http.MultipartRequest('POST', url);
+
+      // Add the Excel file (adjust 'file' if backend uses another field name)
+      request.files.add(await http.MultipartFile.fromPath('file', excelFile.path));
+
+      // Optional headers (don't manually set Content-Type)
+      request.headers.addAll({
+        "Accept": "application/json",
+      });
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('Upload response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['message'] ?? "Products uploaded successfully.";
+        final data = response.body;
+        return data;
       } else {
         return "Failed to upload products: ${response.body}";
       }
@@ -360,7 +369,6 @@ class ApiService {
       return "Error uploading products: $e";
     }
   }
-
 
   // Helper method to map backend status to frontend display status
   String _mapStatusToFrontend(String backendStatus) {

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:pharma_five/service/api_service.dart';
 import 'login_screen.dart';
 
@@ -31,6 +32,34 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Timer? _timer;
 
   final String verifyOTPAPI = '/reset-password';
+  late StreamSubscription<InternetStatus> _connectionSubscription;
+  bool _wasDisconnected = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Initial internet check
+    InternetConnection().hasInternetAccess.then((connected) {
+      if (!connected) {
+        _wasDisconnected = true;
+        _showToast("No internet connection", isError: true);
+      }
+    });
+
+    // Listen to changes
+    _connectionSubscription = InternetConnection().onStatusChange.listen((status) {
+      if (status == InternetStatus.disconnected) {
+        _wasDisconnected = true;
+        _showToast("Internet disconnected", isError: true);
+      } else if (_wasDisconnected) {
+        _wasDisconnected = false;
+        _showToast("Internet connected");
+      }
+    });
+  }
+
+
 
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
@@ -151,6 +180,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   void dispose() {
+    _connectionSubscription.cancel();
     _timer?.cancel();
     _emailController.dispose();
     _newPasswordController.dispose();
@@ -158,6 +188,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     _otpController.dispose();
     super.dispose();
   }
+
 
   @override
   Widget build(BuildContext context) {

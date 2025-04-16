@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:pharma_five/ui/login_screen.dart';
 import 'package:pharma_five/ui/walk_through_screen.dart';
 import 'package:pharma_five/ui/doctor/user_dashboard.dart';
@@ -49,11 +50,19 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   Future<void> _navigateAfterDelay() async {
     await Future.delayed(const Duration(seconds: 3));
 
+    // Check internet connectivity first
+    final isConnected = await InternetConnection().hasInternetAccess;
+    if (!isConnected) {
+      _showToast("No internet connection. Please check your connection and try again.", isError: true);
+      // You could add a retry button or auto-retry mechanism here
+    }
+
     await SharedPreferenceHelper.init();
     final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
     final role = await SharedPreferenceHelper.getUserType();
     final status = await SharedPreferenceHelper.getUserStatus();
 
+    // Rest of your navigation logic remains the same
     if (isLoggedIn) {
       if (role == 'admin') {
         Navigator.pushReplacement(
@@ -66,14 +75,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
         );
       } else {
-        // Still logged in but status not active (e.g., pending/rejected)
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const LoginScreen()),
         );
       }
-    }
-    else {
+    } else {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => WalkthroughScreen()),

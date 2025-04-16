@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:pharma_five/ui/login_screen.dart';
+
 import '../../helper/shared_preferences.dart';
 import '../../service/api_service.dart';
-import '../../model/product_listing_response_model.dart'; // Import the model
 import '../admin_approval_screen.dart';
 
 class UserDashboardScreen extends StatefulWidget {
@@ -15,7 +15,8 @@ class UserDashboardScreen extends StatefulWidget {
   State<UserDashboardScreen> createState() => _UserDashboardScreenState();
 }
 
-class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsBindingObserver {
+class _UserDashboardScreenState extends State<UserDashboardScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, String>> _allProducts = [];
   List<Map<String, String>> _filteredProducts = [];
@@ -42,7 +43,23 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
   }
 
   void _updateInternetStatus() async {
+    final wasConnected = _isConnected;
     _isConnected = await _checkInternetConnectivity();
+
+    if (_isConnected != wasConnected) {
+      final message =
+          _isConnected ? "Internet connected" : "Internet disconnected";
+      final color = _isConnected ? Colors.green : Colors.red;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
     setState(() {}); // Trigger UI update
   }
 
@@ -55,7 +72,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
     }
   }
 
-
   Future<void> _validateUserAndLoadData() async {
     setState(() {
       _isLoading = true;
@@ -65,13 +81,43 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
     final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
     final email = await SharedPreferenceHelper.getUserEmail();
 
-    // Redirect to login if not logged in
     if (!isLoggedIn || email == null || email.isEmpty) {
       _navigateToLogin();
       return;
     }
 
-    // Check user status via API
+    _isConnected = await _checkInternetConnectivity();
+
+    if (!_isConnected) {
+      // Use local stored status without navigating away
+      final localStatus =
+          (await SharedPreferenceHelper.getUserStatus())?.toLowerCase() ??
+              'pending';
+
+      setState(() {
+        _userStatus = localStatus;
+        isUserActive = localStatus == 'active';
+        _isLoading = false;
+        _isRefreshing = false;
+        _lastRefreshed = _getCurrentTimeFormatted();
+      });
+
+      /*ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No internet connection. Showing cached data.'),
+          backgroundColor: Colors.orange,
+        ),
+      );*/
+
+      // Load cached product data (if any)
+      if (isUserActive) {
+        _loadProductData(); // might fail if also requires internet, but handles its own try/catch
+      }
+
+      return;
+    }
+
+    // If internet is available, proceed with API call
     try {
       final result = await ApiService().getUsers(search: email);
       final users = result['content'] ?? [];
@@ -80,55 +126,41 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
         final currentStatus = users[0]['status'].toString().toLowerCase();
         await SharedPreferenceHelper.setUserStatus(currentStatus);
 
-        // Set last refreshed time
-        final now = DateTime.now();
-        final formattedTime = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
-
-        // Update state based on user status
         setState(() {
-          _userStatus = currentStatus; // Store the actual status string
+          _userStatus = currentStatus;
           isUserActive = currentStatus == 'active';
           _isLoading = false;
           _isRefreshing = false;
-          _lastRefreshed = formattedTime; // Store time of last refresh
+          _lastRefreshed = _getCurrentTimeFormatted();
         });
 
-        // Only load product data if user is active
         if (isUserActive) {
           _loadProductData();
         }
       } else {
-        // No user found in API response
         setState(() {
           _userStatus = 'not found';
           isUserActive = false;
           _isLoading = false;
           _isRefreshing = false;
-
-          // Set last refreshed time
-          final now = DateTime.now();
-          _lastRefreshed = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+          _lastRefreshed = _getCurrentTimeFormatted();
         });
       }
     } catch (e) {
       debugPrint('Status check failed: $e');
 
-      // Fallback to local status if API fails
-      final status = (await SharedPreferenceHelper.getUserStatus())?.toLowerCase() ?? 'pending';
-
-      // Set last refreshed time
-      final now = DateTime.now();
-      final formattedTime = '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+      final status =
+          (await SharedPreferenceHelper.getUserStatus())?.toLowerCase() ??
+              'pending';
 
       setState(() {
         _userStatus = status;
         isUserActive = status == 'active';
         _isLoading = false;
         _isRefreshing = false;
-        _lastRefreshed = formattedTime;
+        _lastRefreshed = _getCurrentTimeFormatted();
       });
 
-      // Show error snackbar
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Could not connect to server. Using local status.'),
@@ -136,11 +168,15 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
         ),
       );
 
-      // Load product data only if user is active (based on local status)
       if (isUserActive) {
         _loadProductData();
       }
     }
+  }
+
+  String _getCurrentTimeFormatted() {
+    final now = DateTime.now();
+    return '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _loadProductData() async {
@@ -154,11 +190,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
       final products = await ApiService().fetchProductList();
 
       // Convert API response to the format used by the UI
-      _allProducts = products.map((product) => {
-        'medicineName': product.medicineName ?? 'Unknown Medicine',
-        'genericName': product.genericName ?? 'Unknown Generic Name',
-        // Add any other fields you want to display
-      }).toList();
+      _allProducts = products
+          .map((product) => {
+                'medicineName': product.medicineName ?? 'Unknown Medicine',
+                'genericName': product.genericName ?? 'Unknown Generic Name',
+                // Add any other fields you want to display
+              })
+          .toList();
 
       _filteredProducts = List.from(_allProducts);
       _updateHasMore();
@@ -205,8 +243,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
     setState(() {
       _filteredProducts = _allProducts
           .where((product) =>
-      product['medicineName']!.toLowerCase().contains(query.toLowerCase()) ||
-          product['genericName']!.toLowerCase().contains(query.toLowerCase()))
+              product['medicineName']!
+                  .toLowerCase()
+                  .contains(query.toLowerCase()) ||
+              product['genericName']!
+                  .toLowerCase()
+                  .contains(query.toLowerCase()))
           .toList();
       _currentPage = 0;
       _updateHasMore();
@@ -243,7 +285,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const LoginScreen()),
-            (route) => false,
+        (route) => false,
       );
     } catch (e) {
       debugPrint('Logout failed: $e');
@@ -312,7 +354,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
     final horizontalPadding = isSmallScreen ? 12.0 : 24.0;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
+      padding:
+          EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
       child: Row(
         children: [
           Image.asset(
@@ -320,7 +363,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
             width: 60,
             height: 60,
             errorBuilder: (_, __, ___) =>
-            const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
+                const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
           ),
           const Spacer(),
           IconButton(
@@ -406,7 +449,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                color: _userStatus == 'active' ? Colors.green : const Color(0xff262A88),
+                color: _userStatus == 'active'
+                    ? Colors.green
+                    : const Color(0xff262A88),
               ),
             ),
             const SizedBox(height: 12),
@@ -414,12 +459,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
               _userStatus.toLowerCase() == 'rejected'
                   ? "Your application was not approved. Please contact support."
                   : (_userStatus.toLowerCase() == 'blocked'
-                  ? "Your account has been blocked. Please contact support."
-                  : "You will be able to view product listings once approved."),
+                      ? "Your account has been blocked. Please contact support."
+                      : "You will be able to view product listings once approved."),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
-                color: _userStatus.toLowerCase() == 'rejected' || _userStatus.toLowerCase() == 'blocked'
+                color: _userStatus.toLowerCase() == 'rejected' ||
+                        _userStatus.toLowerCase() == 'blocked'
                     ? Colors.red.shade700
                     : Colors.grey.shade700,
               ),
@@ -430,36 +476,36 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
             // Refresh button with loading indicator
             _isRefreshing
                 ? Column(
-              children: [
-                const CircularProgressIndicator(color: Color(0xff0e63ff)),
-                const SizedBox(height: 8),
-                Text(
-                  "Checking status...",
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            )
+                    children: [
+                      const CircularProgressIndicator(color: Color(0xff0e63ff)),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Checking status...",
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  )
                 : Column(
-              children: [
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _isRefreshing = true;
-                    });
-                    // Check status
-                    _validateUserAndLoadData();
-                  },
-                  icon: const Icon(
-                    Icons.refresh,
-                    color: Color(0xff0e63ff),
-                    size: 40,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _isRefreshing = true;
+                          });
+                          // Check status
+                          _validateUserAndLoadData();
+                        },
+                        icon: const Icon(
+                          Icons.refresh,
+                          color: Color(0xff0e63ff),
+                          size: 40,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
 
             // If active, show a button to view products
             if (_userStatus.toLowerCase() == 'active') ...[
@@ -474,12 +520,14 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xff0e63ff),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text("View Products", style: TextStyle(fontSize: 16)),
+                child:
+                    const Text("View Products", style: TextStyle(fontSize: 16)),
               ),
             ],
           ],
@@ -520,14 +568,15 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
                   // prefixIcon: const Icon(Icons.search),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      _searchProducts('');
-                    },
-                  )
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            _searchProducts('');
+                          },
+                        )
                       : null,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   filled: true,
                   fillColor: Colors.grey.shade100,
                   border: OutlineInputBorder(
@@ -544,16 +593,33 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
             Padding(
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
                 color: const Color(0xff185794),
                 elevation: 1,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(
                     children: const [
-                      Expanded(flex: 1, child: Text('No.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-                      Expanded(flex: 3, child: Text('Medicine Name', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-                      Expanded(flex: 3, child: Text('Generic Name', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
+                      Expanded(
+                          flex: 1,
+                          child: Text('No.',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white))),
+                      Expanded(
+                          flex: 3,
+                          child: Text('Medicine Name',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white))),
+                      Expanded(
+                          flex: 3,
+                          child: Text('Generic Name',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white))),
                     ],
                   ),
                 ),
@@ -565,85 +631,109 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
             // Product List or Loading State
             _isProductsLoading
                 ? const Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: Color(0xff0e63ff)),
-                    SizedBox(height: 16),
-                    Text(
-                      "Loading products...",
-                      style: TextStyle(
-                        color: Color(0xff262A88),
-                        fontSize: 16,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(color: Color(0xff0e63ff)),
+                          SizedBox(height: 16),
+                          Text(
+                            "Loading products...",
+                            style: TextStyle(
+                              color: Color(0xff262A88),
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-            )
+                  )
                 : _errorMessage.isNotEmpty
-                ? Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 48,
-                      color: Colors.red,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage,
-                      style: const TextStyle(
-                        color: Colors.red,
-                        fontSize: 16,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: _loadProductData,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xff0e63ff),
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text("Try Again"),
-                    ),
-                  ],
-                ),
-              ),
-            )
-                : _filteredProducts.isEmpty
-                ? Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Lottie.asset(
-                        "assets/animations/no_data_found.json",
-                        width: 200),
-                    const SizedBox(height: 10),
-                    Text(
-                      _searchController.text.isEmpty
-                          ? "No products available"
-                          : "No products match your search",
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-                : Expanded(
-              child: _buildProductListView(horizontalPadding),
-            ),
+                    ? Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                size: 48,
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _errorMessage,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 16,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton(
+                                onPressed: _loadProductData,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xff0e63ff),
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text("Try Again"),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : _filteredProducts.isEmpty
+                        ? Expanded(
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Lottie.asset(
+                                    _isConnected
+                                        ? "assets/animations/no_data_found.json"
+                                        : "assets/animations/internet.json",
+                                    width: 250,
+                                    fit: BoxFit.contain,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _isConnected
+                                        ? (_searchController.text.isEmpty
+                                            ? "No products available"
+                                            : "No products match your search")
+                                        : "No Internet Connection",
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                      color: _isConnected
+                                          ? Colors.grey.shade700
+                                          : Colors.redAccent,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  if (!_isConnected)
+                                    IconButton(
+                                      onPressed: () {
+                                        _updateInternetStatus();
+                                        _loadProductData();
+                                      },
+                                      icon: Icon(
+                                        Icons.refresh,
+                                        color: Color(0xff0e63ff),
+                                        size: 40,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : Expanded(
+                            child: _buildProductListView(horizontalPadding),
+                          ),
 
             // Only show pagination if there are products and no errors
-            if (!_isProductsLoading && _errorMessage.isEmpty && _filteredProducts.isNotEmpty)
+            if (!_isProductsLoading &&
+                _errorMessage.isEmpty &&
+                _filteredProducts.isNotEmpty)
               _buildPagination(),
           ],
         ),
@@ -687,9 +777,11 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
     }
 
     return ListView.builder(
-      physics: const AlwaysScrollableScrollPhysics(), // Important for pull to refresh to work even when content doesn't fill screen
+      physics: const AlwaysScrollableScrollPhysics(),
+      // Important for pull to refresh to work even when content doesn't fill screen
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      itemCount: _getCurrentPageItems().length + 1, // +1 for the pull to refresh instruction
+      itemCount: _getCurrentPageItems().length + 1,
+      // +1 for the pull to refresh instruction
       itemBuilder: (context, index) {
         // First item is a hint about pull to refresh
         if (index == 0) {
@@ -715,7 +807,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
 
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 6),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           color: Colors.white,
           elevation: 1.5,
           child: Padding(
